@@ -2,7 +2,7 @@ from datetime import datetime
 
 def execute(input_data, identity, db):
     """
-    Create a new message event command.
+    Create a new message event command (simplified version).
     Returns newlyCreatedEvents and any other return values.
     """
     # Support both "content" and "text" fields for compatibility
@@ -16,24 +16,18 @@ def execute(input_data, identity, db):
         "data": {
             "type": "message",
             "content": content,
+            "text": content,  # Include both for compatibility
             "timestamp": datetime.utcnow().isoformat() + "Z"
         },
-        "metadata": {}
+        "metadata": {
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
     }
     
     # Add replyTo if provided
     reply_to = input_data.get("replyTo")
     if reply_to:
         envelope["data"]["replyTo"] = reply_to
-    
-    # If encrypt flag is set, return instruction to encrypt
-    encrypt = input_data.get("encrypt", False)
-    if encrypt:
-        # Sign and encrypt the envelope
-        from core.adapter_graph import adapt_envelope
-        signed = adapt_envelope(envelope, "signed", db, identity)
-        encrypted = adapt_envelope(signed, "encrypted", db, identity)
-        envelope = encrypted
     
     return {
         "newlyCreatedEvents": [envelope],
