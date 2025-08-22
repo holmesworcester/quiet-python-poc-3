@@ -1,0 +1,48 @@
+{
+  "tests": [
+    {
+      "description": "Signed envelope is encrypted with symmetric key (dummy mode)",
+      "direction": "apply",
+      "given": {
+        "envelope": "signed",
+        "data": {"type": "message", "content": "Secret message"},
+        "metadata": {
+          "sender": "test-user",
+          "signature": "dummy_sig_123"
+        },
+        "env": {"CRYPTO_MODE": "dummy"}
+      },
+      "then": {
+        "envelope": "encrypted",
+        "data": "dummy_encrypted_{\"type\": \"message\", \"content\": \"Secret message\"}",
+        "metadata": {
+          "encrypted": true,
+          "algorithm": "dummy",
+          "nonce": "dummy_nonce"
+        }
+      }
+    },
+    {
+      "description": "Signed envelope is encrypted with real crypto",
+      "direction": "apply", 
+      "given": {
+        "envelope": "signed",
+        "data": {"type": "test", "value": 42, "nested": {"key": "value"}},
+        "metadata": {
+          "sender": "alice",
+          "signature": "sig_alice_123"
+        },
+        "env": {"CRYPTO_MODE": "real"}
+      },
+      "then": {
+        "envelope": "encrypted",
+        "data": "*",
+        "metadata": {
+          "encrypted": true,
+          "algorithm": "nacl_secretbox",
+          "nonce": "*"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "tests": [
+    {
+      "description": "Incoming signed message is recognized as signed",
+      "direction": "apply",
+      "given": {
+        "envelope": "incoming",
+        "data": {"type": "message", "content": "Already signed"},
+        "metadata": {
+          "sender": "alice",
+          "signature": "dummy_sig_alice_123",
+          "timestamp": "2024-01-01T00:00:00Z"
+        }
+      },
+      "then": {
+        "envelope": "signed",
+        "data": {"type": "message", "content": "Already signed"},
+        "metadata": {
+          "sender": "alice",
+          "signature": "dummy_sig_alice_123",
+          "timestamp": "2024-01-01T00:00:00Z"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "tests": [
+    {
+      "description": "Encrypted envelope is prepared for outgoing transmission",
+      "direction": "apply",
+      "given": {
+        "envelope": "encrypted",
+        "data": "encrypted_data_blob",
+        "metadata": {
+          "encrypted": true,
+          "algorithm": "AES-256-GCM",
+          "nonce": "random_nonce_123"
+        }
+      },
+      "then": {
+        "envelope": "outgoing",
+        "data": "encrypted_data_blob",
+        "metadata": {
+          "encrypted": true,
+          "algorithm": "AES-256-GCM",
+          "nonce": "random_nonce_123",
+          "timestamp": "*"
+        }
+      }
+    },
+    {
+      "description": "Outgoing envelope includes routing metadata",
+      "direction": "apply",
+      "given": {
+        "envelope": "encrypted",
+        "data": "encrypted_payload",
+        "metadata": {
+          "encrypted": true,
+          "algorithm": "ChaCha20-Poly1305",
+          "nonce": "nonce_456",
+          "recipient": "bob@example.com"
+        }
+      },
+      "then": {
+        "envelope": "outgoing",
+        "data": "encrypted_payload",
+        "metadata": {
+          "encrypted": true,
+          "algorithm": "ChaCha20-Poly1305",
+          "nonce": "nonce_456",
+          "recipient": "bob@example.com",
+          "timestamp": "*"
+        }
+      }
+    }
+  ]
+}

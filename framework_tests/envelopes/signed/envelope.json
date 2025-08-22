@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["envelope", "data", "metadata"],
+  "properties": {
+    "envelope": {
+      "type": "string",
+      "const": "signed"
+    },
+    "data": {
+      "type": "object"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["sender", "signature"],
+      "properties": {
+        "sender": {
+          "type": "string"
+        },
+        "signature": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
