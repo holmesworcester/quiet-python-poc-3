@@ -1,0 +1,114 @@
+{
+  "type": "message",
+  "projector": {
+    "description": "Validates sig using metadata, adds to state.messages if valid; if selfGenerated, encrypts and adds to outgoing.",
+    "func": "projector.project",
+    "tests": [
+      {
+        "given": {
+          "db": {"state": {"messages": []}},
+          "envelope": {
+            "data": {"type": "message", "text": "Hello", "sig": "abc"},
+            "metadata": {"selfGenerated": true, "outerKeyHash": "X"}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {"messages": [{"text": "Hello"}]},
+            "outgoing": ["encrypted_payload"]
+          }
+        }
+      },
+      {
+        "given": {
+          "db": {"state": {"known_senders": ["sender1"], "messages": []}},
+          "envelope": {
+            "data": {"type": "message", "text": "World", "sender": "sender1", "sig": "def"},
+            "metadata": {"eventId": "event123"}
+          }
+        },
+        "then": {
+          "db": {
+            "eventStore": {"sender1": [{"type": "message", "text": "World", "sender": "sender1", "sig": "def"}]},
+            "state": {"messages": [{"text": "World", "sender": "sender1", "sig": "def", "id": "event123"}]}
+          }
+        }
+      },
+      {
+        "given": {
+          "db": {"state": {"known_senders": [], "messages": []}},
+          "envelope": {
+            "data": {"type": "message", "text": "Unknown", "sender": "unknown_sender"},
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "eventStore": {"unknown_sender": [{"type": "message", "text": "Unknown", "sender": "unknown_sender"}]},
+            "state": {"messages": []}
+          }
+        }
+      }
+    ]
+  },
+  "commands": {
+    "create": {
+      "description": "Creates canonical signed event; puts in outgoing if recipient specified.",
+      "func": "create.execute",
+      "tests": [
+        {
+          "given": {"db": {}, "params": {"text": "Hello"}},
+          "then": {"return": {"return": "Created", "newEvents": [{"type": "message", "text": "Hello", "sig": "*"}]}}
+        },
+        {
+          "given": {"db": {}, "params": {"text": "Reply", "replyTo": "msg-123"}},
+          "then": {"return": {"return": "Created", "newEvents": [{"type": "message", "text": "Reply", "replyTo": "msg-123", "sig": "*"}]}}
+        },
+        {
+          "given": {"db": {"state": {}}, "params": {"text": "Hello peer", "recipient": "peer123"}},
+          "then": {
+            "return": {"return": "Message sent to outgoing", "newEvents": [{"type": "message", "text": "Hello peer", "recipient": "peer123", "sig": "*"}]},
+            "db": {
+              "state": {
+                "outgoing": [
+                  {
+                    "recipient": "peer123",
+                    "data": {"type": "message", "text": "Hello peer", "recipient": "peer123", "sig": "*"}
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "list": {
+      "description": "Lists all messages for a given peer",
+      "func": "list.execute",
+      "tests": [
+        {
+          "given": {
+            "db": {
+              "state": {
+                "messages": [
+                  {"text": "Hi", "sender": "peer1", "recipient": "peer2", "timestamp": 100},
+                  {"text": "Hello", "sender": "peer2", "recipient": "peer1", "timestamp": 200}
+                ]
+              }
+            },
+            "params": {"peer_pubkey": "peer1"}
+          },
+          "then": {
+            "return": {
+              "return": "Found 2 messages",
+              "messages": [
+                {"text": "Hi", "sender": "peer1", "recipient": "peer2", "timestamp": 100},
+                {"text": "Hello", "sender": "peer2", "recipient": "peer1", "timestamp": 200}
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

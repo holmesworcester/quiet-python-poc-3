@@ -1,0 +1,51 @@
+{
+  "type": "tor_simulator",
+  "commands": {
+    "deliver": {
+      "description": "Converts all outgoing events to recipient peer to incoming events for that recipient",
+      "func": "deliver.execute",
+      "tests": [
+        {
+          "given": {
+            "db": {
+              "state": {
+                "outgoing": [
+                  {
+                    "recipient": "peer1",
+                    "data": {"type": "message", "text": "Hello", "sender": "peer2"}
+                  },
+                  {
+                    "recipient": "peer2",
+                    "data": {"type": "sync_peers", "sender": "peer1"}
+                  }
+                ]
+              }
+            },
+            "params": {}
+          },
+          "then": {
+            "return": {
+              "return": "Delivered 2 messages"
+            },
+            "db": {
+              "state": {
+                "outgoing": []
+              },
+              "incoming": [
+                {
+                  "recipient": "peer1",
+                  "data": {"type": "message", "text": "Hello", "sender": "peer2"}
+                },
+                {
+                  "recipient": "peer2",
+                  "data": {"type": "sync_peers", "sender": "peer1"}
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  },
+  "job": "deliver"
+}

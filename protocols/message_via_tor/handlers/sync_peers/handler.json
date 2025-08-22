@@ -1,0 +1,166 @@
+{
+  "type": "sync_peers",
+  "projector": {
+    "description": "Validates sync request and sends all peer events to requester",
+    "func": "projector.project",
+    "tests": [
+      {
+        "given": {
+          "db": {
+            "state": {
+              "peers": [
+                {"pubkey": "peer1", "name": "Alice"},
+                {"pubkey": "peer2", "name": "Bob"}
+              ]
+            },
+            "eventStore": {
+              "peer1": [{"type": "peer", "pubkey": "peer1", "name": "Alice"}],
+              "peer2": [{"type": "peer", "pubkey": "peer2", "name": "Bob"}]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "sync_peers",
+              "sender": "peer3"
+            },
+            "metadata": {}
+          },
+          "current_identity": "identity1"
+        },
+        "then": {
+          "db": {
+            "state": {
+              "peers": [
+                {"pubkey": "peer1", "name": "Alice"},
+                {"pubkey": "peer2", "name": "Bob"}
+              ],
+              "outgoing": [
+                {
+                  "recipient": "peer3",
+                  "data": {"type": "peer", "pubkey": "peer1", "name": "Alice"}
+                },
+                {
+                  "recipient": "peer3", 
+                  "data": {"type": "peer", "pubkey": "peer2", "name": "Bob"}
+                }
+              ]
+            },
+            "eventStore": {
+              "peer1": [{"type": "peer", "pubkey": "peer1", "name": "Alice"}],
+              "peer2": [{"type": "peer", "pubkey": "peer2", "name": "Bob"}],
+              "sync-peers-peer3": [{"type": "sync_peers", "sender": "peer3"}]
+            }
+          }
+        }
+      }
+    ]
+  },
+  "commands": {
+    "create": {
+      "description": "Creates a sync-request event given a sender peer",
+      "func": "create.execute",
+      "tests": [
+        {
+          "given": {
+            "db": {},
+            "params": {"sender": "peer1"}
+          },
+          "then": {
+            "return": {
+              "return": "Sync request created",
+              "newEvents": [
+                {"type": "sync_peers", "sender": "peer1"}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "send": {
+      "description": "Sends a sync-request to a recipient peer via outgoing",
+      "func": "send.execute",
+      "tests": [
+        {
+          "given": {
+            "db": {"state": {}},
+            "params": {"recipient": "peer2"}
+          },
+          "then": {
+            "return": {
+              "return": "Sync request sent to peer2"
+            },
+            "db": {
+              "state": {
+                "outgoing": [
+                  {
+                    "recipient": "peer2",
+                    "data": {"type": "sync_peers", "sender": "*"}
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "sync_all": {
+      "description": "Sends sync requests from all identities to all their known peers",
+      "func": "sync_all.execute",
+      "tests": [
+        {
+          "given": {
+            "db": {
+              "state": {
+                "identities": [
+                  {"pubkey": "id1", "name": "Identity1"},
+                  {"pubkey": "id2", "name": "Identity2"}
+                ],
+                "peers": [
+                  {"pubkey": "peer1", "name": "Peer1"},
+                  {"pubkey": "peer2", "name": "Peer2"}
+                ]
+              }
+            },
+            "params": {}
+          },
+          "then": {
+            "return": {
+              "return": "Sent sync requests from 2 identities to 2 peers"
+            },
+            "db": {
+              "state": {
+                "identities": [
+                  {"pubkey": "id1", "name": "Identity1"},
+                  {"pubkey": "id2", "name": "Identity2"}
+                ],
+                "peers": [
+                  {"pubkey": "peer1", "name": "Peer1"},
+                  {"pubkey": "peer2", "name": "Peer2"}
+                ],
+                "outgoing": [
+                  {
+                    "recipient": "peer1",
+                    "data": {"type": "sync_peers", "sender": "id1"}
+                  },
+                  {
+                    "recipient": "peer2",
+                    "data": {"type": "sync_peers", "sender": "id1"}
+                  },
+                  {
+                    "recipient": "peer1",
+                    "data": {"type": "sync_peers", "sender": "id2"}
+                  },
+                  {
+                    "recipient": "peer2",
+                    "data": {"type": "sync_peers", "sender": "id2"}
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "job": "sync_all"
+}

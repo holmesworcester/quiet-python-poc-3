@@ -1,0 +1,134 @@
+{
+  "tests": [
+    {
+      "description": "Successfully decrypt two-layer envelope",
+      "given": {
+        "raw_blob": {
+          "data": "outerKeyHash123456789012345678901234567890123456789012345678901234{\"innerHash\":\"innerKeyHash123\",\"data\":\"encrypted_inner_data\"}",
+          "origin": "peer1",
+          "received_at": 1000
+        },
+        "db": {
+          "state": {
+            "key_map": {
+              "outerKeyHash123456789012345678901234567890123456789012345678901234": "outer_key",
+              "innerKeyHash123": "inner_key"
+            }
+          }
+        }
+      },
+      "then": {
+        "envelope": {
+          "payload": {"type": "test", "data": "decrypted"},
+          "metadata": {
+            "origin": "peer1",
+            "receivedAt": 1000,
+            "selfGenerated": false,
+            "outerKeyHash": "outerKeyHash123456789012345678901234567890123456789012345678901234",
+            "innerKeyHash": "innerKeyHash123",
+            "eventId": "computed_hash"
+          }
+        }
+      }
+    },
+    {
+      "description": "Missing outer key returns partial envelope",
+      "given": {
+        "raw_blob": {
+          "data": "unknownKeyHash1234567890123456789012345678901234567890123456789012encrypted_data",
+          "origin": "peer2",
+          "received_at": 2000
+        },
+        "db": {
+          "state": {
+            "key_map": {}
+          }
+        }
+      },
+      "then": {
+        "envelope": {
+          "payload": null,
+          "metadata": {
+            "origin": "peer2",
+            "receivedAt": 2000,
+            "selfGenerated": false,
+            "error": "Missing outer key: unknownKeyHash1234567890123456789012345678901234567890123456789012",
+            "inNetwork": false,
+            "missingHash": "unknownKeyHash1234567890123456789012345678901234567890123456789012"
+          }
+        }
+      }
+    },
+    {
+      "description": "Missing inner key returns partial envelope with outer decrypted",
+      "given": {
+        "raw_blob": {
+          "data": "outerKeyHash123456789012345678901234567890123456789012345678901234{\"innerHash\":\"unknownInnerKey\",\"data\":\"encrypted_inner\"}",
+          "origin": "peer3",
+          "received_at": 3000
+        },
+        "db": {
+          "state": {
+            "key_map": {
+              "outerKeyHash123456789012345678901234567890123456789012345678901234": "outer_key"
+            }
+          }
+        }
+      },
+      "then": {
+        "envelope": {
+          "payload": {"innerHash": "unknownInnerKey", "data": "encrypted_inner"},
+          "metadata": {
+            "origin": "peer3",
+            "receivedAt": 3000,
+            "selfGenerated": false,
+            "outerKeyHash": "outerKeyHash123456789012345678901234567890123456789012345678901234",
+            "error": "Missing inner key: unknownInnerKey",
+            "inNetwork": true,
+            "missingHash": "unknownInnerKey"
+          }
+        }
+      }
+    },
+    {
+      "description": "Decrypt fails with known key - drop envelope",
+      "given": {
+        "raw_blob": {
+          "data": "knownKeyHash1234567890123456789012345678901234567890123456789012345invalid_encrypted_data",
+          "origin": "peer4",
+          "received_at": 4000
+        },
+        "db": {
+          "state": {
+            "key_map": {
+              "knownKeyHash1234567890123456789012345678901234567890123456789012345": "known_key"
+            }
+          }
+        }
+      },
+      "then": {
+        "envelope": null
+      }
+    },
+    {
+      "description": "Invalid JSON after decrypt - drop envelope",
+      "given": {
+        "raw_blob": {
+          "data": "validKeyHash1234567890123456789012345678901234567890123456789012345not_json_data",
+          "origin": "peer5",
+          "received_at": 5000
+        },
+        "db": {
+          "state": {
+            "key_map": {
+              "validKeyHash1234567890123456789012345678901234567890123456789012345": "valid_key"
+            }
+          }
+        }
+      },
+      "then": {
+        "envelope": null
+      }
+    }
+  ]
+}

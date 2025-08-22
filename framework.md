@@ -1,139 +1,143 @@
+```markdown
 ## Prompt for LLM Coding Assistant
 
 ### Overview
-You are building a POC Python implementation of a minimal P2P event-driven framework for local-first apps (e.g., chat). Use Python 3.12+ with a virtual environment. Follow this directory structure: core/ (tick.py, process_incoming.py, adapter_graph.py, handle.py, test_runner.py), utils/ (crypto/ with crypto.py and handler.json for tests), handlers/ (e.g., message/ with handler.json and separate .py files per function like create.py, projector.py), envelopes/ (e.g., encrypted/ with envelope.json). Use dict-based DB for now (per-identity eventStore/state, e.g., db['eventStore']['pubkey'] = []), later replace with SQLAlchemy. Implement real crypto via thin wrappers in utils/crypto/crypto.py around libsodium (for sign/verify, encrypt/decrypt, KDF, secure_random, hash; install via pip if needed in venv). Focus on handlers/envelopes first; make all tests real and passing.
+You are building a POC Python implementation of a minimal P2P event-driven framework for local-first apps (e.g., chat). Use Python 3.12+ with a virtual environment. Follow this directory structure: core/ (tick.py, greedy_decrypt.py, handle.py, test_runner.py), utils/ (crypto/ with crypto.py and handler.json for tests), handlers/ (e.g., message/ with handler.json and separate .py files per function like projector.py, create.py; add missing_key/ and unknown/ for meta-handlers). Use dict-based DB for now (per-identity eventStore/state, e.g., db['eventStore']['pubkey'] = []), later replace with SQLAlchemy. Implement real crypto via thin wrappers in core/crypto.py around libsodium (for sign/verify, encrypt/decrypt, KDF, secure_random, hash; install via pip if needed in venv). Focus on handlers first; make all tests real and passing. Drop envelope types/adapter graphs; handlers own signing for canonical events, projectors handle encryption for self-generated outgoing using crypto wrappers. Tick uses greedy_decrypt to unwrap incoming to a standard envelope dict ({"payload": dict/str, "metadata": dict}) passed to handlers via handle.
 
 ### Explanations of Core Components
-- **Envelopes and Adapters**: Envelopes represent abstract states of an event (e.g., plaintext envelope, signed envelope) as wrapper dicts: {'envelope': str, 'data': dict, 'metadata': dict}. Each envelope has envelope.json describing adapters (e.g., signed_to_encrypted with apply/reverse functions, tests including encryption_enabled flag for dummy/readable values). Adapters are pure functions (consume/return envelope dicts; read-only state access for keys if needed, e.g., privkey from db['state']['privkeys'][pubkey]) building a graph for paths (e.g., plaintext -> outgoing). Tests are language-neutral JSON in envelope.json; runner executes them, passing encryption_enabled, and verifies given/then (or errors). Runner returns full logs/results (e.g., intermediate envelopes, errors with trace/state snapshots) for observability.
-- **Handlers**: Each event type (e.g., message) has handler.json with projector (validates/updates state from verifiedPlaintext event; e.g., adds to state if valid), commands (e.g., create returns {'return': value, 'new_events': [events]} for caller to project). No focus on jobs here. Each function in its own .py (e.g., create.py calls adapter path to outgoing). Tests are only language-neutral JSON in handler.json (given db/params/event, then db/return/new_events/error); include passing/failing cases for validation (e.g., invalid events marked blocked/pending, not dropped unless structurally invalid/expired/deleted/from removed user). Runner executes them, chains if needed (use prior test outputs in next), and returns detailed results/logs (e.g., step-by-step execution, full state on error) to enable debugging without custom code.
-- **Tick and ProcessIncoming**: tick.py drains incoming (envelope dicts), calls process_incoming.py per item (adapts to verifiedPlaintext, gets handler, projects if envelope matches; stores network-verified events in per-identity eventStore even if invalid, skips state update until valid). Runs jobs last. Tests for tick: JSON in core/tick.json covering full cycles (e.g., given db with incoming/outgoing, then db after tick; permute events for idempotence; simulate multi-identity network via network-simulator job). Runner handles these too, with logs for each step (e.g., adapter path, projection outcome).
-- **Test Runner**: Single runner in core/test_runner.py tests all envelopes/handlers/tick via their JSON. Executes given/then (e.g., setup db, run function, compare output/db/error). For chains: run sequentially, use prior returns in next. Returns all results/logs (pass/fail per test, full state snapshots, detailed errors with why/where/trace, intermediate values like envelopes/event_ids). Emphasize: *Only* use JSON tests for envelopes/handlers/projectors/commands (no freestyle tests/debug code); focus debugging on runner outputs. Test the runner itself with its own JSON tests (e.g., mock handler.json with edge cases) for coverage/observability. If error, relay detailed messages (e.g., "Validation failed: signature mismatch, expected X got Y, state: {db}").
+- **Greedy Decrypt and Standard Envelope**: greedy_decrypt.py unwraps incoming raw blobs greedily (transit → inner layers), returning a standard envelope dict or None (for drop on decrypt fail with known key). Envelope: {"payload": decrypted_data (dict/str, fully decrypted if successful), "metadata": {"outerKeyHash": str, "innerKeyHash": str, "origin": str, "receivedAt": int, "error": str (if partial/missing key), "selfGenerated": bool (true for self-events)}}. If missing key, return partial envelope for routing to missing_key handler. Handlers receive this envelope uniformly; projectors update state based on payload/metadata (e.g., verify sig in payload using metadata keys; if "selfGenerated": true, encrypt payload and append to db["outgoing"], potentially via helper function like encrypt_for_outgoing).
+- **Handlers**: Each event type (e.g., message) has handler.json with projector (validates/updates state from envelope; adds to state for both incoming and self-generated events for symmetry; if selfGenerated, also encrypts/sends to outgoing *if* this event creationg or handling requires sending outgoing data), commands (e.g., create returns {"return": value, "newEvents": [canonical_events]} – plaintext/signed; caller creates envelopes with selfGenerated=true and calls handle to project them). No focus on jobs yet here. Pending tables will be queried by projectors when new events come in that may block items. Each function in its own .py (e.g., create.py calls crypto.sign for canonical). Tests are language-neutral JSON in handler.json (given db/envelope/params, then db/return/newEvents/error; include metadata in given for readability, e.g., selfGenerated cases). Runner executes them, chains if needed (use prior test outputs in next), and returns detailed results/logs (e.g., step-by-step execution, full state on error) to enable debugging without custom code. Add meta-handlers: missing_key/ (projects partials to state["pending_missing_key"] with metadata/error/missingHash/inNetwork; projectors retry on key_map changes (e.g. from a succesfully unsealed incoming key event) and remove once projected) and unknown/ (for decrypted but unrecognized types; projects to state["unknown_events"] with payload/metadata; purge old via job).
+- **Tick and Handle**: tick.py drains incoming (raw blobs), calls greedy_decrypt per item; if envelope["metadata"].get("error"), route to missing_key projector; else get handler by payload["type"] or route to unknown; call projector with envelope/db/current_identity/time_now_ms. Projectors store network-verified events in per-identity eventStore (projectors manage identity themselves; this is not in core) even if invalid, but skip state update until valid. Runs jobs last (e.g., scan pending tables, re-decrypt/process/remove). For self-generated events (from commands), caller creates envelope with payload=canonical, metadata={"selfGenerated": true, ...}, calls handle directly (symmetric to incoming). Tests for tick: JSON in core/tick.json covering full cycles (e.g., given db with incoming/outgoing, then db after tick; permute events for idempotence and eventual consistency (all projections of permuted events should be identical); simulate multi-identity network via network-simulator job). Runner handles these too, with logs for each step (e.g., decrypt outcome, projection result).
+- **Test Runner**: Single runner in core/test_runner.py tests all handlers/tick via their JSON. Executes given/then (e.g., setup db, run function, compare output/db/error). For chains: build them sequentially "by hand", using prior returns in to make the next test. Returns all results/logs (pass/fail per test, full state snapshots, detailed errors with why/where/trace, intermediate values like envelopes/event_ids). Emphasize: *Only* use JSON tests for handlers/projectors/commands (no freestyle tests/debug code); focus debugging on runner outputs. Test the runner itself with its own JSON tests (e.g., mock handler.json with edge cases) for coverage/observability and with handlers in `framework_tests` folder. If error, relay detailed messages (e.g., "Validation failed: signature mismatch, expected X got Y, state: {db}").
 
 ### Build Instructions
 1. Create venv, install libsodium/pyca/cryptography for crypto.
 2. Implement test_runner.py first; test it with its own JSON tests covering execution, chaining, errors, permutations (e.g., event order idempotence for projectors).
-3. For each handler/envelope: Write handler.json/envelope.json with required fields/lengths (add schema check in runner for structural validity). Implement functions in separate .py, run tests via runner, fix based on logs (never add debug prints; use runner observability).
-4. Use real crypto: crypto.py wrappers (e.g., libsodium.sign, .encrypt); tests in utils/crypto/handler.json (use two identities in same network for end-to-end, e.g., generate data in one test, use in next via prior output).
-5. Always run all tests before reporting completion; fix errors or ask for clarification.
-6. Maintain inconsistencies.md: Log/resolve design mismatches (e.g., "Previous UUID event_id -> Resolved to hash of encrypted envelope").
-7. Get as far as possible; ask clarifying questions if stuck (e.g., on adapter params).
+3. Implement greedy_decrypt.py; test via runner with JSON in core/greedy_decrypt.json (given raw_blob/db, then envelope or null; include missing key/drop cases).
+4. For each handler (incl. meta): Write handler.json with required fields/lengths (add schema check in runner for structural validity). Implement functions in separate .py, run tests via runner, fix based on logs (never add debug prints; use runner observability).
+5. Use real crypto: crypto.py wrappers (e.g., libsodium.sign, .encrypt); tests in utils/crypto/handler.json (use two identities in same network for end-to-end, e.g., generate data in one test, use in next via prior output).
+6. Always run all tests before reporting completion; fix errors or ask for clarification.
+7. Get as far as possible; ask clarifying questions if stuck (e.g., on decrypt params).
 
 ### Invariants (Remember Always)
-- Never drop events unless structurally invalid (runner-checked via schema), expired, deleted, or from removed user. Store network-verified events; projectors skip invalid until valid (e.g., re-project on dependency).
-- Event_id: Hash of canonical encrypted envelope (extracted in signed_to_encrypted adapter, added to metadata, projected to DB set for O(1) dup check; never in event to avoid hash loop).
+- Never drop events unless structurally invalid (runner-checked via schema), expired, deleted, from removed user, or decrypt fails with known key (treated as invalid). Store network-verified events; projectors skip invalid until valid (e.g., re-project on dependency).
+- Event_id: Hash of whole canonical event (json.dumps(payload, sort_keys=True) post-decrypt or for self; added to metadata in greedy_decrypt or handle for O(1) dup check in projectors; never in payload to avoid hash loop).
+- Keep the hash of the "inner" event-layer encrypted event in envelope / projection, this can be the id until we have a canonical event_id from the signed plaintext event. keep hash of encrypted too 
 - Debugging: Only via runner logs/results; enhance runner observability (detailed errors, state snapshots) with tests for it.
-- Tests: Language-neutral JSON only for envelopes/handlers/projectors/commands; chain via prior outputs; include pass/fail for validation (pending/dropped cases).
-- Encryption: Use dummy mode in tests for readability; real in code.
+- Tests: Language-neutral JSON only for handlers/projectors/commands; chain via prior outputs; include pass/fail for validation (pending/dropped cases); separate metadata in given for readability.
+- Encryption: tests can toggle dummy or real mode for encryption readability; always real in code.
 
 ### Todos
 - Add schema to handler.json (required fields/lengths); runner validates.
-- Encryption mapping: 1:1 context-free (e.g., include symmetric secret in metadata for tests).
+- Implement jobs for pending/unknown tables (retry on key_map change, purge old).
+- Add helper functions (e.g., encrypt_for_outgoing in utils/) for projectors to use in selfGenerated cases.
 - If isinstance checks: For type validation in runner (e.g., ensure db is dict); document in code.
 
 ## Sample Code Examples (Updated with New Terminology)
 
 ### core/tick.py (pseudocode)
 ```python
-def tick(db, time_now_ms=None):
-    incoming_envelopes = db.get('incoming', [])[:]
+def tick(db, time_now_ms=None, current_identity=None):
+    incoming_blobs = db.get('incoming', [])[:]
     db['incoming'] = []
-    for envelope in incoming_envelopes:
-        db = process_incoming(db, envelope, time_now_ms)
-    # Run jobs...
+    for blob in incoming_blobs:
+        envelope = greedy_decrypt(blob, db, current_identity)
+        if envelope is None:
+            continue  # Dropped
+        db = handle(db, envelope, time_now_ms, current_identity)
+    # Run jobs (e.g., retry pending_missing_key)...
     return db
 ```
 
-### core/process_incoming.py (pseudocode)
+### core/handle.py (pseudocode)
 ```python
-from adapter_graph import adapt
-from handle import get_handler_for_event_type
+from handlers import get_handler_for_event_type
 
-def process_incoming(db, envelope, time_now_ms):
+def handle(db, envelope, time_now_ms, current_identity):
     try:
-        verified_envelope = adapt(envelope, 'verifiedPlaintext', db)  # Adapt to target envelope
-        event_type = verified_envelope['data']['type']
-        handler = get_handler_for_event_type(event_type)
-        if handler['projector']['envelope'] == 'verifiedPlaintext':
-            # Store if network-verified...
-            db = handler['projector']['func'](db, verified_envelope['data'], time_now_ms)
+        if 'error' in envelope['metadata']:
+            handler = get_handler_for_event_type('missing_key')
+        else:
+            event_type = envelope['payload'].get('type')
+            handler = get_handler_for_event_type(event_type or 'unknown')
+        db = handler['projector']['func'](db, envelope, time_now_ms, current_identity)
     except Exception as e:
         db.setdefault('blocked', []).append({'envelope': envelope, 'error': str(e)})
     return db
 ```
 
-### core/adapter_graph.py (pseudocode; formerly transform.py)
+### core/greedy_decrypt.py (pseudocode)
 ```python
-# Example adapter: signed_to_encrypted
-def signed_to_encrypted_apply(envelope, db):
-    data = str(envelope['data'])
-    # Read key from db (read-only)...
-    encrypted_data = encrypt(data, key)
-    return {'envelope': 'encrypted', 'data': encrypted_data, 'metadata': {...}}
+import json
+from utils.crypto.crypto import decrypt, hash
 
-# Build graph from all envelope.json adapters
-def adapt(envelope, target_envelope, db):
-    path = find_path(envelope['envelope'], target_envelope)
-    current = envelope
-    for adapter_name in path:
-        adapter = adapter_graph[adapter_name]
-        current = adapter['apply'](current, db)
-    return current
+def greedy_decrypt(raw_blob, db, current_identity):
+    envelope = {"payload": None, "metadata": {"origin": raw_blob.get("origin"), "receivedAt": raw_blob.get("received_at"), "selfGenerated": False}}
+    # Outer (transit)
+    outer_hash = raw_blob["data"][:64]
+    outer_key = db["state"]["key_map"].get(outer_hash)
+    if not outer_key:
+        envelope["metadata"]["error"] = f"Missing outer key: {outer_hash}"
+        envelope["metadata"]["inNetwork"] = False
+        return envelope
+    outer_cipher = raw_blob["data"][64:]
+    decrypted_outer = decrypt(outer_cipher, outer_key)
+    if not decrypted_outer:
+        return None  # Drop
+    envelope["metadata"]["outerKeyHash"] = outer_hash
+    partial = json.loads(decrypted_outer)
+    # Inner
+    inner_hash = partial.get("innerHash", outer_hash)
+    inner_key = db["state"]["key_map"].get(inner_hash)
+    if not inner_key:
+        envelope["metadata"]["error"] = f"Missing inner key: {inner_hash}"
+        envelope["metadata"]["inNetwork"] = True
+        envelope["payload"] = partial
+        return envelope
+    inner_cipher = partial["data"]
+    decrypted_inner = decrypt(inner_cipher, inner_key)
+    if not decrypted_inner:
+        return None  # Drop
+    envelope["metadata"]["innerKeyHash"] = inner_hash
+    envelope["payload"] = json.loads(decrypted_inner)
+    envelope["metadata"]["eventId"] = hash(json.dumps(envelope["payload"], sort_keys=True))
+    return envelope
 ```
 
-### Sample envelope.json (for encrypted)
-```json
-{
-  "name": "encrypted",
-  "description": "Encrypted envelope with network metadata. Tests use direct dicts like {'envelope': '...', 'data': {...}, 'metadata': {...}} interpreted as envelopes.",
-  "adapters": {
-    "signed_to_encrypted": {
-      "apply": {
-        "description": "Encrypt signed envelope data using metadata key.",
-        "calls": ["crypto.encrypt"]
-      },
-      "reverse": {
-        "description": "Decrypt to signed envelope, verify network_id.",
-        "calls": ["crypto.decrypt"],
-        "errorIf": "fails or mismatch"
-      },
-      "tests": [
-        {
-          "encryption_enabled": false,
-          "given": {"envelope": "signed", "data": {"type": "message", "content": "Hello"}, "metadata": {"signature": "sig", "network_id": "net1", "key": "transit_key"}},
-          "then": {"envelope": "encrypted", "data": "encrypted:{\"type\":\"message\",\"content\":\"Hello\"}", "metadata": {"network_id": "net1"}}
-        }
-      ]
-    }
-  }
-}
-```
-
-### Sample handler.json (generic for message)
+### Sample handler.json (for message)
 ```json
 {
   "type": "message",
   "projector": {
-    "description": "Validates and adds to state.messages if valid.",
-    "envelope": "verifiedPlaintext",
+    "description": "Validates sig using metadata, adds to state.messages if valid; if selfGenerated, encrypts and adds to outgoing.",
     "func": "path.to.projector_func",
     "tests": [
       {
-        "given": {"db": {"state": {"messages": []}}, "newEvent": {"type": "message", "text": "Hello"}},
-        "then": {"db": {"state": {"messages": [{"text": "Hello"}]}}}
+        "given": {"db": {"state": {"messages": []}}, "envelope": {"payload": {"type": "message", "text": "Hello", "sig": "abc"}, "metadata": {"selfGenerated": true, "outerKeyHash": "X"}}},
+        "then": {"db": {"state": {"messages": [{"text": "Hello"}]}, "outgoing": ["encrypted_payload"]}}
       }
     ]
   },
   "commands": {
     "create": {
-      "description": "Creates event, adapts to outgoing, returns for projection.",
+      "description": "Creates canonical signed event; caller projects via handle.",
       "func": "path.to.create_message",
       "tests": [
         {
           "given": {"db": {}, "params": {"text": "Hello"}},
-          "then": {"return": {"return": "Created", "new_events": [{"type": "message", "text": "Hello"}]}}
+          "then": {"return": {"return": "Created", "newEvents": [{"type": "message", "text": "Hello", "sig": "abc"}]}}
         }
       ]
     }
   }
 }
 ```
+
+### Example Usage for Self-Events (pseudocode, e.g., in caller after command)
+```python
+result = handler['commands']['create']['func'](db, params, current_identity)
+for canonical in result.get('newEvents', []):
+    envelope = {'payload': canonical, 'metadata': {'selfGenerated': true, 'receivedAt': time_now_ms}}
+    db = handle(db, envelope, time_now_ms, current_identity)  # Projects, adds to state/outgoing
+```
+````

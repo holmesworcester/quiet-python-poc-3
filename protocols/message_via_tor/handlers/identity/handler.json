@@ -1,0 +1,137 @@
+{
+  "type": "identity",
+  "projector": {
+    "description": "Stores identity information including keypairs",
+    "func": "projector.project",
+    "tests": [
+      {
+        "given": {
+          "db": {"state": {}},
+          "envelope": {
+            "data": {
+              "type": "identity",
+              "pubkey": "pub123",
+              "privkey": "priv123",
+              "name": "Alice"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "identities": [
+                {
+                  "pubkey": "pub123",
+                  "privkey": "priv123",
+                  "name": "Alice"
+                }
+              ]
+            },
+            "eventStore": {
+              "pub123": [
+                {
+                  "type": "identity",
+                  "pubkey": "pub123",
+                  "privkey": "priv123",
+                  "name": "Alice"
+                }
+              ]
+            }
+          }
+        }
+      }
+    ]
+  },
+  "commands": {
+    "create": {
+      "description": "Creates an identity with keypair and peer",
+      "func": "create.execute",
+      "tests": [
+        {
+          "given": {"db": {}, "params": {"name": "Bob"}},
+          "then": {
+            "return": {
+              "return": "Identity created",
+              "newEvents": [
+                {"type": "identity", "pubkey": "*", "privkey": "*", "name": "Bob"},
+                {"type": "peer", "pubkey": "*", "name": "Bob"}
+              ],
+              "identity": {"pubkey": "*", "name": "Bob"}
+            }
+          }
+        }
+      ]
+    },
+    "list": {
+      "description": "Lists all identities (without private keys)",
+      "func": "list.execute",
+      "tests": [
+        {
+          "given": {
+            "db": {
+              "state": {
+                "identities": [
+                  {"pubkey": "pub1", "privkey": "priv1", "name": "Alice"},
+                  {"pubkey": "pub2", "privkey": "priv2", "name": "Bob"}
+                ]
+              }
+            },
+            "params": {}
+          },
+          "then": {
+            "return": {
+              "return": "Found 2 identities",
+              "identities": [
+                {"pubkey": "pub1", "name": "Alice"},
+                {"pubkey": "pub2", "name": "Bob"}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "invite": {
+      "description": "Creates an invite link for sharing",
+      "func": "invite.execute",
+      "tests": [
+        {
+          "given": {
+            "db": {},
+            "params": {"pubkey": "pub123", "name": "Alice"}
+          },
+          "then": {
+            "return": {
+              "return": "Invite link created",
+              "invite_link": "*",
+              "invite_data": {"peer": "pub123", "name": "Alice"}
+            }
+          }
+        }
+      ]
+    },
+    "join": {
+      "description": "Joins a network using an invite link",
+      "func": "join.execute",
+      "tests": [
+        {
+          "given": {
+            "db": {},
+            "params": {
+              "invite_link": "message-via-tor://invite/eyJuYW1lIjoiQWxpY2UiLCJwZWVyIjoicHViMTIzIn0="
+            }
+          },
+          "then": {
+            "return": {
+              "return": "Joined network via invite",
+              "newEvents": [
+                {"type": "peer", "pubkey": "pub123", "name": "Alice", "joined_via": "invite"}
+              ],
+              "peer": {"pubkey": "pub123", "name": "Alice"}
+            }
+          }
+        }
+      ]
+    }
+  }
+}
