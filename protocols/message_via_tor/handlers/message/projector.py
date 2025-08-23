@@ -29,10 +29,16 @@ def project(db, envelope, time_now_ms, current_identity):
     if sender:
         db['eventStore'][sender].append(data)
     
+    # Check if message has content
+    text = data.get('text', data.get('content', ''))
+    if not text:
+        # Skip messages without text content
+        return db
+        
     # Check if sender is known (for validation)
     known_senders = db['state'].get('known_senders', [])
     
-    # For self-generated events, always process
+    # Only process messages from known senders or self-generated
     if metadata.get('selfGenerated') or sender in known_senders:
         # Valid - update state
         if 'messages' not in db['state']:
@@ -40,7 +46,7 @@ def project(db, envelope, time_now_ms, current_identity):
         
         # Extract message info
         message = {
-            'text': data.get('text', data.get('content', '')),
+            'text': text,
             'sender': sender,
             'timestamp': data.get('timestamp', time_now_ms)
         }
@@ -50,20 +56,25 @@ def project(db, envelope, time_now_ms, current_identity):
             message['sig'] = data['sig']
         if data.get('replyTo'):
             message['replyTo'] = data['replyTo']
+        if data.get('recipient'):
+            message['recipient'] = data['recipient']
         if metadata.get('eventId'):
             message['id'] = metadata['eventId']
         
         # Add to messages
         db['state']['messages'].append(message)
         
-        # If self-generated, encrypt and add to outgoing
-        if metadata.get('selfGenerated'):
-            # TODO: Real encryption - for now just add to outgoing
-            if 'outgoing' not in db:
-                db['outgoing'] = []
+        # If self-generated with recipient, add to outgoing
+        if metadata.get('selfGenerated') and data.get('recipient'):
+            # Add to state.outgoing
+            if 'outgoing' not in db['state']:
+                db['state']['outgoing'] = []
             
-            # Create encrypted blob (simplified for now)
-            encrypted_payload = f"encrypted_payload"
-            db['outgoing'].append(encrypted_payload)
+            # Create structured outgoing envelope
+            outgoing_envelope = {
+                'recipient': data['recipient'],
+                'data': data
+            }
+            db['state']['outgoing'].append(outgoing_envelope)
     
     return db

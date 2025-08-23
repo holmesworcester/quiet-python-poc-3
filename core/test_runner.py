@@ -294,12 +294,56 @@ class TestRunner:
             identity = given.get("identity", "test-user")
             result = self.execute_command(cmd, identity, db)
             
+            # Apply the command's db changes if any
+            if "db" in result:
+                db = result["db"]
+            
+            # Run ticks if specified
+            ticks = test.get("ticks", 0)
+            if ticks > 0:
+                self.log(f"Running {ticks} ticks after command")
+                
+                # Constants for time progression
+                base_time = given.get("params", {}).get("time_now_ms", 1000)
+                time_increment = 100  # ms between ticks
+                
+                # Import tick based on protocol
+                protocol = handler_file.split('/')[1]  # e.g. "message_via_tor"
+                if protocol == "framework_tests":
+                    from core.tick import tick
+                else:
+                    # For other protocols, tick just runs jobs
+                    from core.tick import run_all_jobs as tick
+                
+                # Run the specified number of ticks
+                for i in range(ticks):
+                    current_time = base_time + (i + 1) * time_increment
+                    self.log(f"Tick {i+1} at time {current_time}")
+                    db = tick(db, time_now_ms=current_time)
+                    
+                # Update result with final db state
+                result["db"] = db
+            
             # Check result
-            matches, path, exp_val, act_val = self.subset_match(result, then.get("return", {}))
-            if matches:
+            return_matches = True
+            if "return" in then:
+                matches, path, exp_val, act_val = self.subset_match(result, then["return"])
+                if not matches:
+                    self.log(f"Mismatch at return{path}: expected {exp_val}, got {act_val}", "ERROR")
+                    return_matches = False
+            
+            # Check db state if specified
+            db_matches = True
+            if "db" in then:
+                db_result = {"db": db}
+                matches, path, exp_val, act_val = self.subset_match(db_result, {"db": then["db"]})
+                if not matches:
+                    self.log(f"Mismatch at {path}: expected {exp_val}, got {act_val}", "ERROR")
+                    db_matches = False
+            
+            if return_matches and db_matches:
                 return {"scenario": scenario_name, "passed": True, "logs": self.logs}
             else:
-                self.log(f"Mismatch at return{path}: expected {exp_val}, got {act_val}", "ERROR")
                 return {"scenario": scenario_name, "passed": False, "logs": self.logs}
         
         # For handler tests with newEvent, convert to envelope
@@ -416,6 +460,55 @@ class TestRunner:
         if os.path.exists(handlers_path):
             os.environ["HANDLER_PATH"] = handlers_path
         
+        # Check for schema.sql and validate if present
+        schema_file = os.path.join(protocol_path, "schema.sql")
+        if os.path.exists(schema_file):
+            print(f"\nFound schema.sql, validating handler data against schema...")
+            try:
+                from core.check_schema_sql import SQLSchemaParser, HandlerSchemaValidator
+                
+                # Parse schema
+                schema_parser = SQLSchemaParser(schema_file)
+                print(f"  Parsed {len(schema_parser.tables)} tables from schema")
+                
+                # Validate handlers
+                validator = HandlerSchemaValidator(schema_parser)
+                total_errors = 0
+                total_warnings = 0
+                
+                # Check each handler
+                for root, dirs, files in os.walk(handlers_path):
+                    if 'handler.json' in files:
+                        handler_path = os.path.join(root, 'handler.json')
+                        handler_name = os.path.basename(os.path.dirname(handler_path))
+                        
+                        errors, warnings = validator.validate_handler(handler_path)
+                        if errors or warnings:
+                            print(f"\n  Handler '{handler_name}':")
+                            if errors:
+                                print(f"    Schema errors: {len(errors)}")
+                                for error in errors[:3]:  # Show first 3 errors
+                                    print(f"      - {error}")
+                                if len(errors) > 3:
+                                    print(f"      ... and {len(errors) - 3} more")
+                            if warnings:
+                                print(f"    Schema warnings: {len(warnings)}")
+                                
+                        total_errors += len(errors)
+                        total_warnings += len(warnings)
+                
+                if total_errors > 0 or total_warnings > 0:
+                    print(f"\n  Schema validation summary:")
+                    print(f"    Total errors: {total_errors} (not enforced)")
+                    print(f"    Total warnings: {total_warnings}")
+                else:
+                    print(f"  ✓ All handlers match schema perfectly!")
+                    
+            except Exception as e:
+                print(f"  WARNING: Schema validation failed: {str(e)}")
+                if self.verbose:
+                    import traceback
+                    traceback.print_exc()
         
         # Run tests for this protocol
         protocol_results = []

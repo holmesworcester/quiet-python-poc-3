@@ -7,7 +7,9 @@ def execute(input_data, identity, db):
     Creates an identity containing pubkey, privkey, and calls peer.create
     """
     # Generate a new keypair for this identity
-    privkey, pubkey = get_keypair(identity)
+    keypair = get_keypair(identity)
+    privkey = keypair["private"]
+    pubkey = keypair["public"]
     
     # Create identity event
     identity_event = {

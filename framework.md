@@ -1,6 +1,8 @@
 ```markdown
 ## Prompt for LLM Coding Assistant
 
+* `incoming` is now just a handler with a job, run by tick. it still uses handle.py, provided by core, to pass along to other handlers. 
+
 ### Overview
 You are building a POC Python implementation of a minimal P2P event-driven framework for local-first apps (e.g., chat). Use Python 3.12+ with a virtual environment. Follow this directory structure: core/ (tick.py, greedy_decrypt.py, handle.py, test_runner.py), utils/ (crypto/ with crypto.py and handler.json for tests), handlers/ (e.g., message/ with handler.json and separate .py files per function like projector.py, create.py; add missing_key/ and unknown/ for meta-handlers). Use dict-based DB for now (per-identity eventStore/state, e.g., db['eventStore']['pubkey'] = []), later replace with SQLAlchemy. Implement real crypto via thin wrappers in core/crypto.py around libsodium (for sign/verify, encrypt/decrypt, KDF, secure_random, hash; install via pip if needed in venv). Focus on handlers first; make all tests real and passing. Drop envelope types/adapter graphs; handlers own signing for canonical events, projectors handle encryption for self-generated outgoing using crypto wrappers. Tick uses greedy_decrypt to unwrap incoming to a standard envelope dict ({"payload": dict/str, "metadata": dict}) passed to handlers via handle.
 

@@ -15,7 +15,9 @@ def execute(input_data, identity, db):
         raise ValueError("Message content is required")
     
     # Get keypair for signing
-    private_key, public_key = get_keypair(identity)
+    keypair = get_keypair(identity)
+    private_key = keypair["private"]
+    public_key = keypair["public"]
     
     # Get current time from input or use current time
     time_now_ms = input_data.get("time_now_ms", int(time.time() * 1000))

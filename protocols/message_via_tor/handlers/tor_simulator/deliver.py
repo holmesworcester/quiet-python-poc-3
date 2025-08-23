@@ -17,9 +17,20 @@ def execute(input_data, identity, db):
     
     # Move all outgoing to incoming
     delivered_count = 0
+    current_time_ms = input_data.get('time_now_ms', 0)
+    
     for envelope in outgoing:
-        # Add to incoming - the recipient info will be used for routing
-        db['incoming'].append(envelope)
+        # Wrap as pre-decrypted envelope for incoming handler
+        incoming_envelope = {
+            "envelope": True,
+            "data": envelope.get("data"),
+            "metadata": {
+                "origin": "network",
+                "receivedAt": current_time_ms,
+                "selfGenerated": False
+            }
+        }
+        db['incoming'].append(incoming_envelope)
         delivered_count += 1
     
     # Clear outgoing

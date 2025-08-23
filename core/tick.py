@@ -1,28 +1,15 @@
-from core.greedy_decrypt import greedy_decrypt
-from core.handle import handle
 import importlib.util
 import os
 from core.handler_discovery import get_handler_path
+from core.handle import handle
 
 
 def tick(db, time_now_ms=None, current_identity=None):
     """
-    Main event loop - drains incoming queue and processes events.
+    Main event loop - runs all handler jobs.
+    The incoming handler job now handles message decryption and routing.
     """
-    # Get incoming blobs
-    incoming_blobs = db.get('incoming', [])[:]
-    db['incoming'] = []
-    
-    # Process each blob
-    for blob in incoming_blobs:
-        envelope = greedy_decrypt(blob, db, current_identity)
-        if envelope is None:
-            continue  # Dropped
-        
-        # Handle the envelope
-        db = handle(db, envelope, time_now_ms, current_identity)
-    
-    # Run all jobs from all handlers
+    # Run all jobs from all handlers (including the incoming handler)
     db = run_all_jobs(db, time_now_ms)
     
     return db
@@ -101,7 +88,7 @@ def run_all_jobs(db, time_now_ms):
         try:
             # Execute the job command using run_command
             # Jobs run without identity context
-            input_data = {"current_time_ms": time_now_ms}
+            input_data = {"time_now_ms": time_now_ms}
             db, result = run_command(handler_name, job_command, input_data, None, db, time_now_ms)
             
         except Exception as e:

@@ -33,12 +33,14 @@
               },
               "incoming": [
                 {
-                  "recipient": "peer1",
-                  "data": {"type": "message", "text": "Hello", "sender": "peer2"}
+                  "envelope": true,
+                  "data": {"type": "message", "text": "Hello", "sender": "peer2"},
+                  "metadata": {"origin": "network", "receivedAt": "*", "selfGenerated": false}
                 },
                 {
-                  "recipient": "peer2",
-                  "data": {"type": "sync_peers", "sender": "peer1"}
+                  "envelope": true,
+                  "data": {"type": "sync_peers", "sender": "peer1"},
+                  "metadata": {"origin": "network", "receivedAt": "*", "selfGenerated": false}
                 }
               ]
             }
