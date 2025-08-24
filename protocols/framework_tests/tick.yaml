@@ -1,0 +1,92 @@
+description: 'Tests for tick: drains incoming blobs, uses greedy_decrypt, handles via projectors, runs jobs.'
+tests:
+  - given:
+      db:
+        incoming:
+          - data: 'outerKey12345678901234567890123456789012345678901234567890123456{"data":"{\\"type\\":\\"message\\",\\"text\\":\\"Hello\\",\\"sender\\":\\"pubkey1\\"}"}'
+            origin: peer1
+            received_at: 1000
+        eventStore: []
+        state:
+          messages: []
+          known_senders:
+            - pubkey1
+          key_map:
+            outerKey12345678901234567890123456789012345678901234567890123456: decrypt_key
+    then:
+      db:
+        incoming: []
+        eventStore:
+          - type: message
+            text: Hello
+            sender: pubkey1
+        state:
+          messages:
+            - text: Hello
+              sender: pubkey1
+    description: Processes incoming blob through greedy_decrypt and projects if valid
+  - given:
+      db:
+        incoming:
+          - data: unknownKey12345678901234567890123456789012345678901234567890123eencrypted_data
+            origin: peer2
+            received_at: 2000
+        state:
+          key_map: {}
+    then:
+      db:
+        incoming: []
+        state:
+          pending_missing_key:
+            - envelope:
+                data: null
+                metadata:
+                  error: 'Missing outer key: unknownKey12345678901234567890123456789012345678901234567890123e'
+                  inNetwork: false
+                  missingHash: unknownKey12345678901234567890123456789012345678901234567890123e
+                  origin: peer2
+                  receivedAt: 2000
+              missingHash: unknownKey12345678901234567890123456789012345678901234567890123e
+              inNetwork: false
+              timestamp: 2000
+    description: Missing key results in pending_missing_key entry
+  - given:
+      db:
+        incoming:
+          - data: 'outerKey12345678901234567890123456789012345678901234567890123456{"innerHash":"innerKey123","data":"{\\"type\\":\\"unknowntype\\",\\"text\\":\\"Nested\\"}"}'
+            origin: peer3
+            received_at: 3000
+        state:
+          messages: []
+          key_map:
+            outerKey12345678901234567890123456789012345678901234567890123456: outer_decrypt_key
+            innerKey123: inner_decrypt_key
+    then:
+      db:
+        incoming: []
+        state:
+          unknown_events:
+            - data:
+                type: unknowntype
+                text: Nested
+              metadata:
+                outerKeyHash: outerKey12345678901234567890123456789012345678901234567890123456
+                innerKeyHash: innerKey123
+                origin: peer3
+                receivedAt: 3000
+                eventId: '*'
+              timestamp: 3000
+    description: Two-layer decryption with unknown event type goes to unknown_events
+  - given:
+      db:
+        incoming:
+          - data: validKey123456789012345678901234567890123456789012345678901234567invalid_json_data
+            origin: peer4
+            received_at: 4000
+        state:
+          key_map:
+            validKey123456789012345678901234567890123456789012345678901234567: valid_key
+    then:
+      db:
+        incoming: []
+    description: Invalid data after decrypt is dropped

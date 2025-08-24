@@ -1,0 +1,105 @@
+type: missing_key
+projector:
+  description: Projects partial envelopes to state.pending_missing_key with metadata/error/missingHash/inNetwork
+  func: projector.project
+  tests:
+    - given:
+        db:
+          state: {}
+        envelope:
+          data: null
+          metadata:
+            error: 'Missing outer key: abc123'
+            inNetwork: false
+            missingHash: abc123
+            origin: peer1
+            receivedAt: 1000
+      then:
+        db:
+          state:
+            pending_missing_key:
+              - envelope:
+                  data: null
+                  metadata:
+                    error: 'Missing outer key: abc123'
+                    inNetwork: false
+                    missingHash: abc123
+                    origin: peer1
+                    receivedAt: 1000
+                missingHash: abc123
+                inNetwork: false
+                timestamp: 1000
+    - given:
+        db:
+          state:
+            pending_missing_key: []
+        envelope:
+          data:
+            data: encrypted_data
+          metadata:
+            error: 'Missing inner key: def456'
+            inNetwork: true
+            missingHash: def456
+            outerKeyHash: abc123
+            origin: peer2
+            receivedAt: 2000
+      then:
+        db:
+          state:
+            pending_missing_key:
+              - envelope:
+                  data:
+                    data: encrypted_data
+                  metadata:
+                    error: 'Missing inner key: def456'
+                    inNetwork: true
+                    missingHash: def456
+                    outerKeyHash: abc123
+                    origin: peer2
+                    receivedAt: 2000
+                missingHash: def456
+                inNetwork: true
+                timestamp: 2000
+commands:
+  retry_pending:
+    description: Retry pending missing key envelopes when key_map has changed
+    func: retry_pending.execute
+    tests:
+      - given:
+          db:
+            state:
+              pending_missing_key:
+                - envelope:
+                    data: null
+                    metadata:
+                      error: Missing key
+                  missingHash: key123
+                  inNetwork: false
+                  timestamp: 1000
+              key_map:
+                key123: found_key
+          params: {}
+        then:
+          return:
+            return: Processed 1 entries
+            processed: 1
+            remaining: 0
+      - given:
+          db:
+            state:
+              pending_missing_key:
+                - envelope:
+                    data: null
+                    metadata:
+                      error: Missing key
+                  missingHash: key456
+                  inNetwork: false
+                  timestamp: 1000
+              key_map: {}
+          params: {}
+        then:
+          return:
+            return: Processed 0 entries
+            processed: 0
+            remaining: 1
+job: retry_pending

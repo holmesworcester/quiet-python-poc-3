@@ -1,0 +1,320 @@
+type: incoming
+version: 1
+description: Processes incoming messages from network and routes to appropriate handlers
+commands:
+  process_incoming:
+    description: Processes incoming message queue and routes to handlers
+    func: process_incoming.execute
+    tests:
+      - description: Successfully decrypt two-layer envelope and route to handler (dummy)
+        given:
+          params:
+            time_now_ms: 1000
+          identity: null
+          env:
+            CRYPTO_MODE: dummy
+          db:
+            incoming:
+              - data: 'outerKeyHash1234567890123456789012345678901234567890123456789012{"innerHash":"innerKeyHash123","data":"{\\"type\\":\\"message\\",\\"text\\":\\"Hello\\",\\"sender\\":\\"alice\\"}"}'
+                origin: peer1
+                received_at: 1000
+            state:
+              key_map:
+                outerKeyHash1234567890123456789012345678901234567890123456789012: outer_key
+                innerKeyHash123: inner_key
+              messages: []
+              known_senders:
+                - alice
+        then:
+          return:
+            db:
+              incoming: []
+              state:
+                messages:
+                  - text: Hello
+                    sender: alice
+      - description: Generate encrypted blob and decrypt it (real crypto)
+        comment: This test generates encrypted data using the actual encryption code, then decrypts it
+        given:
+          params:
+            time_now_ms: 1000
+          identity: null
+          env:
+            CRYPTO_MODE: real
+          db:
+            incoming: []
+            state:
+              key_map:
+                3083e1ce982abd7f59235aa1ea3c97046562c75205d4dab8affd2f3600d79958: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+                69c6718bad81422d4d230563e6926cffcfb5375991806b1ac1c5c3998bbed949: fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
+              messages: []
+              known_senders:
+                - alice
+          setup:
+            type: generate_encrypted_blob
+            inner_data:
+              type: message
+              text: Hello
+              sender: alice
+            inner_key: fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
+            outer_key: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+        then:
+          return:
+            db:
+              incoming: []
+              state:
+                messages:
+                  - text: Hello
+                    sender: alice
+      - description: Missing outer key creates missing_key event (dummy)
+        given:
+          params:
+            time_now_ms: 2000
+          identity: null
+          env:
+            CRYPTO_MODE: dummy
+          db:
+            incoming:
+              - data: unknownKeyHash12345678901234567890123456789012345678901234567890encrypted_data
+                origin: peer2
+                received_at: 2000
+            state:
+              key_map: {}
+              pending_missing_key: []
+        then:
+          return:
+            db:
+              incoming: []
+              state:
+                pending_missing_key:
+                  - missingHash: unknownKeyHash12345678901234567890123456789012345678901234567890
+                    inNetwork: false
+      - description: Missing outer key creates missing_key event (real crypto)
+        given:
+          params:
+            time_now_ms: 2000
+          identity: null
+          env:
+            CRYPTO_MODE: real
+          db:
+            incoming:
+              - data: 1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef123456789012345678901234567890123456789012345678some_encrypted_data_here
+                origin: peer2
+                received_at: 2000
+            state:
+              key_map: {}
+              pending_missing_key: []
+        then:
+          return:
+            db:
+              incoming: []
+              state:
+                pending_missing_key:
+                  - missingHash: 1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+                    inNetwork: false
+      - description: Missing inner key creates missing_key event (dummy)
+        given:
+          params:
+            time_now_ms: 3000
+          identity: null
+          env:
+            CRYPTO_MODE: dummy
+          db:
+            incoming:
+              - data: 'outerKeyHash1234567890123456789012345678901234567890123456789012{"innerHash":"unknownInnerKey","data":"encrypted_inner"}'
+                origin: peer3
+                received_at: 3000
+            state:
+              key_map:
+                outerKeyHash1234567890123456789012345678901234567890123456789012: outer_key
+              pending_missing_key: []
+        then:
+          return:
+            db:
+              incoming: []
+              state:
+                pending_missing_key:
+                  - missingHash: unknownInnerKey
+                    inNetwork: true
+      - description: Missing inner key with real crypto creates missing_key event
+        given:
+          params:
+            time_now_ms: 3000
+          identity: null
+          env:
+            CRYPTO_MODE: real
+          db:
+            incoming:
+              - data: 3083e1ce982abd7f59235aa1ea3c97046562c75205d4dab8affd2f3600d799584b03a9b86587faa371b508af3e785e8d337fc750b4053fd290937e3787cff740b60d1c4acc826cf115ed8f66fbbfbc7d01dd88c429ce4809c3d64c3d05524c6db7ba0d0666657b38ba60f5de06a241b1876fadf9b411c7850b6e98c29c6be7ca8e4492eddfda216d697f724cc6a4028cd5bd1832f77c513c24dd0df98d7b692f958492142d6549f8b0e109236c8618476c31467bdd0d21e985dfa148a71e945a5ba85b4253971753020bad64a852792ad2
+                origin: peer3
+                received_at: 3000
+            state:
+              key_map:
+                3083e1ce982abd7f59235aa1ea3c97046562c75205d4dab8affd2f3600d79958: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+              pending_missing_key: []
+        then:
+          return:
+            db:
+              incoming: []
+              state:
+                pending_missing_key:
+                  - missingHash: unknownInnerKeyHash1234567890123456789012345678901234567890123456
+                    inNetwork: true
+      - description: Invalid JSON after decrypt drops message (dummy)
+        given:
+          params:
+            time_now_ms: 4000
+          identity: null
+          env:
+            CRYPTO_MODE: dummy
+          db:
+            incoming:
+              - data: validKeyHash1234567890123456789012345678901234567890123456789012345not_json_data
+                origin: peer4
+                received_at: 4000
+            state:
+              key_map:
+                validKeyHash1234567890123456789012345678901234567890123456789012345: valid_key
+        then:
+          return:
+            db:
+              incoming: []
+      - description: Invalid data with real crypto drops (no nonce)
+        given:
+          params:
+            time_now_ms: 4000
+          identity: null
+          env:
+            CRYPTO_MODE: real
+          db:
+            incoming:
+              - data: fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210not_valid_encrypted_data
+                origin: peer4
+                received_at: 4000
+            state:
+              key_map:
+                fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+        then:
+          return:
+            db:
+              incoming: []
+      - description: Already decrypted envelope passes through (dummy)
+        given:
+          params:
+            time_now_ms: 5000
+          identity: null
+          env:
+            CRYPTO_MODE: dummy
+          db:
+            incoming:
+              - envelope: true
+                data:
+                  type: message
+                  text: Already decrypted
+                  sender: alice
+                metadata:
+                  selfGenerated: true
+            state:
+              messages: []
+              known_senders:
+                - alice
+        then:
+          return:
+            db:
+              incoming: []
+              state:
+                messages:
+                  - text: Already decrypted
+                    sender: alice
+      - description: Already decrypted envelope passes through (real crypto)
+        given:
+          params:
+            time_now_ms: 5000
+          identity: null
+          env:
+            CRYPTO_MODE: real
+          db:
+            incoming:
+              - envelope: true
+                data:
+                  type: message
+                  text: Already decrypted
+                  sender: alice
+                metadata:
+                  selfGenerated: true
+            state:
+              messages: []
+              known_senders:
+                - alice
+        then:
+          return:
+            db:
+              incoming: []
+              state:
+                messages:
+                  - text: Already decrypted
+                    sender: alice
+      - description: Two-layer decryption with unknown event type goes to unknown handler (real crypto)
+        given:
+          params:
+            time_now_ms: 6000
+          identity: null
+          env:
+            CRYPTO_MODE: real
+          db:
+            incoming: []
+            state:
+              key_map:
+                3083e1ce982abd7f59235aa1ea3c97046562c75205d4dab8affd2f3600d79958: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+                69c6718bad81422d4d230563e6926cffcfb5375991806b1ac1c5c3998bbed949: fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
+              unknown_events: []
+          setup:
+            type: generate_encrypted_blob
+            inner_data:
+              type: custom_event_type
+              payload: test data
+              sender: alice
+            inner_key: fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
+            outer_key: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+        then:
+          return:
+            db:
+              incoming: []
+              state:
+                unknown_events:
+                  - data:
+                      type: custom_event_type
+                      payload: test data
+                      sender: alice
+                    metadata: '...'
+                    timestamp: 6000
+      - description: Missing inner key creates missing_key event with proper hash (real crypto)
+        given:
+          params:
+            time_now_ms: 7000
+          identity: null
+          env:
+            CRYPTO_MODE: real
+          db:
+            incoming: []
+            state:
+              key_map:
+                3083e1ce982abd7f59235aa1ea3c97046562c75205d4dab8affd2f3600d79958: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+              pending_missing_key: []
+          setup:
+            type: generate_encrypted_blob
+            inner_data:
+              type: message
+              text: Missing inner key test
+              sender: bob
+            inner_key: '1111111111111111111111111111111111111111111111111111111111111111'
+            outer_key: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+        then:
+          return:
+            db:
+              incoming: []
+              state:
+                pending_missing_key:
+                  - missingHash: 5cdbdb8963a47c9e1c0058adb1db2a5748248a240be05fc2e006f2550bd462be
+                    inNetwork: true
+job: process_incoming
