@@ -29,10 +29,10 @@ def project(db, envelope, time_now_ms, current_identity):
     if sender:
         db['eventStore'][sender].append(data)
     
-    # Check if message has content
-    text = data.get('text', data.get('content', ''))
+    # Check if message has text
+    text = data.get('text')
     if not text:
-        # Skip messages without text content
+        # Skip messages without text
         return db
         
     # Check if sender is known (for validation)

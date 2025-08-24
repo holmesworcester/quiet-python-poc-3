@@ -9,10 +9,10 @@ def execute(input_data, identity, db):
     Create a new message event command.
     Creates canonical signed event and puts it in outgoing envelope if recipient specified.
     """
-    # Support both "content" and "text" fields for compatibility
-    content = input_data.get("content") or input_data.get("text")
-    if not content:
-        raise ValueError("Message content is required")
+    # Get message text
+    text = input_data.get("text")
+    if not text:
+        raise ValueError("Message text is required")
     
     # Get keypair for signing
     keypair = get_keypair(identity)
@@ -25,7 +25,7 @@ def execute(input_data, identity, db):
     # Create canonical event data
     event_data = {
         "type": "message",
-        "text": content,
+        "text": text,
         "sender": public_key,
         "timestamp": time_now_ms
     }

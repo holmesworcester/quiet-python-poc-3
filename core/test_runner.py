@@ -14,6 +14,8 @@ import sys
 import os
 import traceback
 import copy
+import yaml
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -510,6 +512,16 @@ class TestRunner:
                     import traceback
                     traceback.print_exc()
         
+        # Check for api.yaml and validate if present
+        api_file = os.path.join(protocol_path, "api.yaml")
+        if os.path.exists(api_file):
+            print(f"\nFound api.yaml, validating API operations...")
+            api_errors = self.validate_api(protocol_name, protocol_path, api_file, handlers_path)
+            if api_errors > 0:
+                print(f"  ❌ API validation found {api_errors} errors")
+            else:
+                print(f"  ✅ All API operations validated successfully")
+        
         # Run tests for this protocol
         protocol_results = []
         for root, dirs, files in os.walk(protocol_path):
@@ -581,6 +593,104 @@ class TestRunner:
                 print()
         
         return total_failed == 0
+    
+    def validate_api(self, protocol_name, protocol_path, api_file, handlers_path):
+        """Validate API specification against handlers. Returns error count."""
+        try:
+            # Load API specification
+            with open(api_file, 'r') as f:
+                api_spec = yaml.safe_load(f)
+            
+            # Discover handlers
+            handlers = {}
+            for handler_dir in os.listdir(handlers_path):
+                handler_path = os.path.join(handlers_path, handler_dir)
+                if os.path.isdir(handler_path):
+                    handler_json_path = os.path.join(handler_path, "handler.json")
+                    if os.path.exists(handler_json_path):
+                        try:
+                            with open(handler_json_path, 'r') as f:
+                                handler_data = json.load(f)
+                            
+                            # Extract commands
+                            commands = []
+                            if "commands" in handler_data:
+                                commands.extend(handler_data["commands"].keys())
+                            
+                            # Jobs are also callable as commands
+                            if "job" in handler_data:
+                                commands.append(handler_data["job"])
+                            
+                            handlers[handler_dir] = commands
+                        except Exception as e:
+                            print(f"  Warning: Failed to parse {handler_json_path}: {e}")
+            
+            print(f"  Found {len(handlers)} handlers: {', '.join(handlers.keys())}")
+            
+            # Validate operations
+            error_count = 0
+            operation_count = 0
+            
+            # Special operations that don't map to handlers
+            special_operations = ["tick.run"]
+            
+            if "paths" in api_spec:
+                for path, path_item in api_spec["paths"].items():
+                    for method, operation in path_item.items():
+                        if method in ["get", "post", "put", "delete", "patch"]:
+                            operation_count += 1
+                            operation_id = operation.get("operationId")
+                            
+                            if not operation_id:
+                                print(f"    Error: {method.upper()} {path}: Missing operationId")
+                                error_count += 1
+                                continue
+                            
+                            # Skip special operations
+                            if operation_id in special_operations:
+                                continue
+                            
+                            # Check operationId format
+                            if '.' not in operation_id:
+                                print(f"    Error: {method.upper()} {path}: Invalid operationId format '{operation_id}'")
+                                error_count += 1
+                                continue
+                            
+                            handler_name, command_name = operation_id.split('.', 1)
+                            
+                            # Check if handler exists
+                            if handler_name not in handlers:
+                                print(f"    Error: {method.upper()} {path}: Handler '{handler_name}' not found")
+                                error_count += 1
+                                continue
+                            
+                            # Check if command exists
+                            if command_name not in handlers[handler_name]:
+                                print(f"    Error: {method.upper()} {path}: Command '{command_name}' not found in handler '{handler_name}'")
+                                error_count += 1
+            
+            print(f"  Validated {operation_count} operations")
+            
+            # Check for duplicate operationIds
+            operation_ids = []
+            if "paths" in api_spec:
+                for path, path_item in api_spec["paths"].items():
+                    for method, operation in path_item.items():
+                        if method in ["get", "post", "put", "delete", "patch"]:
+                            if "operationId" in operation:
+                                operation_ids.append(operation["operationId"])
+            
+            duplicates = [x for x in operation_ids if operation_ids.count(x) > 1]
+            if duplicates:
+                unique_duplicates = list(set(duplicates))
+                print(f"    Error: Duplicate operationIds found: {unique_duplicates}")
+                error_count += len(unique_duplicates)
+            
+            return error_count
+            
+        except Exception as e:
+            print(f"  ERROR: Failed to validate API: {str(e)}")
+            return 1
 
 if __name__ == "__main__":
     runner = TestRunner()
