@@ -6,7 +6,7 @@ import time
 def execute(input_data, identity, db):
     """
     Create a new message event command.
-    Creates canonical signed event and puts it in outgoing envelope if recipient specified.
+    Creates canonical signed event and broadcasts it to all known peers of the identity.
     """
     # Get message text
     text = input_data.get("text")
@@ -29,44 +29,46 @@ def execute(input_data, identity, db):
         "timestamp": time_now_ms
     }
     
-    # Add recipient if provided
-    recipient = input_data.get("recipient")
-    if recipient:
-        event_data["recipient"] = recipient
-    
-    
     # Sign the canonical event
     data_str = json.dumps(event_data, sort_keys=True)
     signature = sign(data_str, private_key)
     event_data["sig"] = signature
     
-    # If recipient specified, create outgoing envelope
-    if recipient:
-        # Initialize state if needed
-        if 'state' not in db:
-            db['state'] = {}
+    # Initialize state if needed
+    if 'state' not in db:
+        db['state'] = {}
+    
+    if 'outgoing' not in db['state']:
+        db['state']['outgoing'] = []
+    
+    # Get all peers known by this identity
+    peers = db['state'].get('peers', [])
+    known_peers = [p for p in peers if p.get('received_by') == public_key]
+    
+    
+    # Create outgoing envelope for each known peer
+    sent_count = 0
+    for peer in known_peers:
+        peer_pubkey = peer.get('pubkey')
+        if not peer_pubkey:
+            continue
         
-        if 'outgoing' not in db['state']:
-            db['state']['outgoing'] = []
+        # Don't send to self
+        if public_key == peer_pubkey:
+            continue
         
         # Create outgoing envelope
         outgoing = {
-            "recipient": recipient,
+            "recipient": peer_pubkey,
             "data": event_data
         }
         
         db['state']['outgoing'].append(outgoing)
-        
-        return {
-            "return": "Message sent to outgoing",
-            "newEvents": [event_data],
-            "messageId": f"msg-{time_now_ms}",
-            "db": db
-        }
+        sent_count += 1
     
-    # Return the canonical signed event for local handling
     return {
-        "return": "Created",
+        "return": f"Message broadcast to {sent_count} peers",
         "newEvents": [event_data],
-        "messageId": f"msg-{time_now_ms}"
+        "messageId": f"msg-{time_now_ms}",
+        "db": db
     }

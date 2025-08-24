@@ -15,13 +15,16 @@ def execute(input_data, identity, db):
     
     sent_count = 0
     
-    # From each identity, send sync request to each peer
+    # From each identity, send sync request to peers known by that identity
     for identity_obj in identities:
         identity_pubkey = identity_obj.get('pubkey')
         if not identity_pubkey:
             continue
+        
+        # Find peers known by this specific identity
+        known_peers = [p for p in peers if p.get('received_by') == identity_pubkey]
             
-        for peer in peers:
+        for peer in known_peers:
             peer_pubkey = peer.get('pubkey')
             if not peer_pubkey:
                 continue
@@ -45,7 +48,10 @@ def execute(input_data, identity, db):
             db['state']['outgoing'].append(outgoing)
             sent_count += 1
     
+    # Count unique recipients
+    unique_recipients = len(set(o['recipient'] for o in db['state']['outgoing'] if o['data'].get('type') == 'sync_peers'))
+    
     return {
-        "return": f"Sent sync requests from {len(identities)} identities to {len(peers)} peers",
+        "return": f"Sent sync requests from {len(identities)} identities to {unique_recipients} peers",
         "db": db
     }

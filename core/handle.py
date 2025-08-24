@@ -14,8 +14,6 @@ def handle(db, envelope, time_now_ms):
         else:
             # Get event type from data
             event_type = envelope.get('data', {}).get('type')
-            if not event_type:
-                event_type = 'unknown'
         
         # Log what we're handling
         if os.environ.get("TEST_MODE"):
@@ -27,7 +25,19 @@ def handle(db, envelope, time_now_ms):
         # Build handler map dynamically from available handlers
         handler_map = build_handler_map(handler_base)
         
-        handler_name = handler_map.get(event_type)
+        # If no event type, check if unknown handler exists; if not, drop the event
+        if not event_type:
+            handler_name = handler_map.get('unknown')
+            if not handler_name:
+                # If no unknown handler, drop the event by adding to blocked
+                db.setdefault('blocked', []).append({
+                    'envelope': envelope,
+                    'error': 'Validation failed: unknown type'
+                })
+                return db
+            event_type = 'unknown'
+        else:
+            handler_name = handler_map.get(event_type)
         
         # Log handler mapping
         if os.environ.get("TEST_MODE"):

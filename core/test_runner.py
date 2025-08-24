@@ -711,6 +711,33 @@ class TestRunner:
                             if command_name not in handlers[handler_name]:
                                 print(f"    Error: {method.upper()} {path}: Command '{command_name}' not found in handler '{handler_name}'")
                                 error_count += 1
+                            
+                            # Check request body schema for required fields
+                            if "requestBody" in operation:
+                                request_body = operation["requestBody"]
+                                if "content" in request_body and "application/json" in request_body["content"]:
+                                    schema = request_body["content"]["application/json"].get("schema", {})
+                                    if schema.get("type") == "object":
+                                        # Check if required array is missing when properties are defined
+                                        if "properties" in schema and "required" not in schema:
+                                            # Only flag as error if there are properties that should be required
+                                            prop_count = len(schema["properties"])
+                                            if prop_count > 0:
+                                                print(f"    Error: {method.upper()} {path}: Request body schema has {prop_count} properties but no 'required' array specified")
+                                                error_count += 1
+                            
+                            # Check response schemas for required fields
+                            if "responses" in operation:
+                                for status_code, response in operation["responses"].items():
+                                    if "content" in response and "application/json" in response["content"]:
+                                        schema = response["content"]["application/json"].get("schema", {})
+                                        if schema.get("type") == "object":
+                                            # Check if required array is missing when properties are defined
+                                            if "properties" in schema and "required" not in schema:
+                                                prop_count = len(schema["properties"])
+                                                if prop_count > 0:
+                                                    print(f"    Error: {method.upper()} {path}: Response {status_code} schema has {prop_count} properties but no 'required' array specified")
+                                                    error_count += 1
             
             print(f"  Validated {operation_count} operations")
             

@@ -4,6 +4,10 @@ We start with message_via_tor.md and then expand.
 
 Sometimes a `message` will arrive before we receive its corresponding `peer`. We can handle this by having the `message` make a list of blocked messages and the `peer` projector call the Message Projector on messgaes a new `peer` makes valid. 
 
+### Private Groups
+
+We can add a `key` event and a `sealed-key` envelope that seals to a single public key, and then issue `sealed-key` events for all keys to all peers, to create private groups of `peer`s e.g. for DMs.
+
 ### Event-Layer Encryption
 
 We can add another layer of encryption to `peer` and `message` events with a `psk` created (or re-used, if existing) by `invite` and the envelope `encrypted-event` which gets converted into `peer` or `message` by its adapter. the `outgoing` envelope would then require `encrypted-event` for these message types.
@@ -13,10 +17,6 @@ We can add another layer of encryption to `peer` and `message` events with a `ps
 We can make `sync` a bit more efficient by adding a bloom filter and a random, per-event salt to our `sync` request, and modifying `sync.validate` so that it only returns `peer` and `message` events that are negative matches to the bloom, i.e. events the requester does *not* have.
 
 This is not entirely realistic for large numbers of messages but it points in a realistic direction.
-
-### Private Groups
-
-We can add a `key` event and a `sealed-key` envelope that seals to a single public key, and then issue `sealed-key` events for all keys, to create private groups of `peer`s e.g. for DMs.
 
 ### Disappearing Messages
 

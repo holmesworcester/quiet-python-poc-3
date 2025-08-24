@@ -2,7 +2,6 @@
   "type": "incoming",
   "version": 1,
   "description": "Processes incoming messages from network and routes to appropriate handlers",
-  "_note": "Real crypto tests require PyNaCl library and proper nonce support in the wire format. Current implementation drops messages in real crypto mode.",
   "commands": {
     "process_incoming": {
       "description": "Processes incoming message queue and routes to handlers",
@@ -316,6 +315,80 @@
                 "incoming": [],
                 "state": {
                   "messages": [{"text": "Already decrypted", "sender": "alice"}]
+                }
+              }
+            }
+          }
+        },
+        {
+          "description": "Two-layer decryption with unknown event type goes to unknown handler (real crypto)",
+          "given": {
+            "params": {"time_now_ms": 6000},
+            "identity": null,
+            "env": {"CRYPTO_MODE": "real"},
+            "db": {
+              "incoming": [],
+              "state": {
+                "key_map": {
+                  "3083e1ce982abd7f59235aa1ea3c97046562c75205d4dab8affd2f3600d79958": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                  "69c6718bad81422d4d230563e6926cffcfb5375991806b1ac1c5c3998bbed949": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+                },
+                "unknown_events": []
+              }
+            },
+            "setup": {
+              "type": "generate_encrypted_blob",
+              "inner_data": {"type": "custom_event_type", "payload": "test data", "sender": "alice"},
+              "inner_key": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+              "outer_key": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+            }
+          },
+          "then": {
+            "return": {
+              "db": {
+                "incoming": [],
+                "state": {
+                  "unknown_events": [{
+                    "data": {"type": "custom_event_type", "payload": "test data", "sender": "alice"},
+                    "metadata": "...",
+                    "timestamp": 6000
+                  }]
+                }
+              }
+            }
+          }
+        },
+        {
+          "description": "Missing inner key creates missing_key event with proper hash (real crypto)",
+          "given": {
+            "params": {"time_now_ms": 7000},
+            "identity": null,
+            "env": {"CRYPTO_MODE": "real"},
+            "db": {
+              "incoming": [],
+              "state": {
+                "key_map": {
+                  "3083e1ce982abd7f59235aa1ea3c97046562c75205d4dab8affd2f3600d79958": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                },
+                "pending_missing_key": []
+              }
+            },
+            "setup": {
+              "type": "generate_encrypted_blob", 
+              "inner_data": {"type": "message", "text": "Missing inner key test", "sender": "bob"},
+              "inner_key": "1111111111111111111111111111111111111111111111111111111111111111",
+              "outer_key": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+            }
+          },
+          "then": {
+            "return": {
+              "db": {
+                "incoming": [],
+                "state": {
+                  "pending_missing_key": [{
+                    "missingHash": "5cdbdb8963a47c9e1c0058adb1db2a5748248a240be05fc2e006f2550bd462be",
+                    "inNetwork": true
+                  }]
                 }
               }
             }

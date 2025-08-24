@@ -50,35 +50,35 @@
         }
       },
       {
-        "description": "Self-generated message with recipient should be stored with received_by set to sender",
+        "description": "Self-generated message should be stored with received_by set to sender",
         "given": {
           "db": { "state": { "messages": [] } },
           "envelope": {
-            "data": { "type": "message", "text": "Hello", "sender": "peerA", "recipient": "peerB", "sig": "abc" },
+            "data": { "type": "message", "text": "Hello", "sender": "peerA", "sig": "abc" },
             "metadata": { "selfGenerated": true }
           }
         },
         "then": {
           "db": {
             "state": {
-              "messages": [ { "text": "Hello", "sender": "peerA", "recipient": "peerB", "received_by": "peerA", "timestamp": "*" } ]
+              "messages": [ { "text": "Hello", "sender": "peerA", "received_by": "peerA", "timestamp": "*" } ]
             }
           }
         }
       },
       {
-        "description": "Projector should preserve recipient on stored messages (with known sender)",
+        "description": "Message from known sender should be stored normally",
         "given": {
           "db": { "state": { "messages": [], "peers": [{"pubkey": "peerA", "name": "Peer A", "received_by": "peerB"}], "identities": [{"pubkey": "peerB", "privkey": "peerB_priv", "name": "Peer B"}] } },
           "envelope": {
-            "data": { "type": "message", "text": "Hi", "sender": "peerA", "recipient": "peerB", "sig": "def" },
+            "data": { "type": "message", "text": "Hi", "sender": "peerA", "sig": "def" },
             "metadata": {"received_by": "peerB"}
           }
         },
         "then": {
           "db": {
             "state": {
-              "messages": [ { "text": "Hi", "sender": "peerA", "recipient": "peerB", "timestamp": "*", "received_by": "peerB" } ]
+              "messages": [ { "text": "Hi", "sender": "peerA", "timestamp": "*", "received_by": "peerB" } ]
             }
           }
         }
@@ -103,14 +103,14 @@
         "given": {
           "db": { "state": { "messages": [], "outgoing": [], "peers": [{"pubkey": "peerA", "name": "Peer A", "received_by": "peerB"}], "identities": [{"pubkey": "peerB", "privkey": "peerB_priv", "name": "Peer B"}] } },
           "envelope": {
-            "data": { "type": "message", "text": "External", "sender": "peerA", "recipient": "peerB", "sig": "xyz" },
+            "data": { "type": "message", "text": "External", "sender": "peerA", "sig": "xyz" },
             "metadata": { "selfGenerated": false, "received_by": "peerB" }
           }
         },
         "then": {
           "db": {
             "state": {
-              "messages": [ { "text": "External", "sender": "peerA", "recipient": "peerB", "timestamp": "*", "received_by": "peerB" } ],
+              "messages": [ { "text": "External", "sender": "peerA", "timestamp": "*", "received_by": "peerB" } ],
               "outgoing": []
             }
           }
@@ -212,23 +212,51 @@
   },
   "commands": {
     "create": {
-      "description": "Creates canonical signed event; puts in outgoing if recipient specified.",
+      "description": "Creates canonical signed event and broadcasts to all known peers.",
       "func": "create.execute",
       "tests": [
         {
-          "given": {"db": {}, "params": {"text": "Hello"}},
-          "then": {"return": {"return": "Created", "newEvents": [{"type": "message", "text": "Hello", "sig": "*"}]}}
+          "description": "Message with no known peers",
+          "given": {"db": {"state": {"peers": []}}, "params": {"text": "Hello"}, "env": {"CRYPTO_MODE": "dummy"}},
+          "then": {"return": {"return": "Message broadcast to 0 peers", "newEvents": [{"type": "message", "text": "Hello", "sig": "*"}]}}
         },
         {
-          "given": {"db": {"state": {}}, "params": {"text": "Hello peer", "recipient": "peer123"}},
+          "description": "Message broadcast to all known peers",
+          "given": {
+            "db": {
+              "state": {
+                "identities": {
+                  "sender": {
+                    "keypair": {
+                      "public": "sender_pub",
+                      "private": "sender_priv"
+                    },
+                    "name": "Sender"
+                  }
+                },
+                "peers": [
+                  {"pubkey": "peer1", "name": "Peer 1", "received_by": "dummy_pubkey_sender"},
+                  {"pubkey": "peer2", "name": "Peer 2", "received_by": "dummy_pubkey_sender"},
+                  {"pubkey": "dummy_pubkey_sender", "name": "Self", "received_by": "dummy_pubkey_sender"}
+                ]
+              }
+            }, 
+            "params": {"text": "Hello peers"},
+            "identity": "sender",
+            "env": {"CRYPTO_MODE": "dummy"}
+          },
           "then": {
-            "return": {"return": "Message sent to outgoing", "newEvents": [{"type": "message", "text": "Hello peer", "recipient": "peer123", "sig": "*"}]},
+            "return": {"return": "Message broadcast to 2 peers", "newEvents": [{"type": "message", "text": "Hello peers", "sig": "*"}]},
             "db": {
               "state": {
                 "outgoing": [
                   {
-                    "recipient": "peer123",
-                    "data": {"type": "message", "text": "Hello peer", "recipient": "peer123", "sig": "*"}
+                    "recipient": "peer1",
+                    "data": {"type": "message", "text": "Hello peers", "sig": "*"}
+                  },
+                  {
+                    "recipient": "peer2",
+                    "data": {"type": "message", "text": "Hello peers", "sig": "*"}
                   }
                 ]
               }
@@ -236,7 +264,7 @@
           }
         },
         {
-          "description": "Message sent to recipient is delivered after ticks", 
+          "description": "Message broadcast to peers is delivered after ticks", 
           "given": {
             "db": {
               "state": {
@@ -249,28 +277,30 @@
                     "name": "Alice"
                   }
                 },
-                "peers": [{"pubkey": "alice_pub", "name": "Alice"}],
+                "peers": [
+                  {"pubkey": "bob_pub", "name": "Bob", "received_by": "dummy_pubkey_alice"},
+                  {"pubkey": "charlie_pub", "name": "Charlie", "received_by": "dummy_pubkey_alice"}
+                ],
                 "messages": []
               }
             },
             "params": {
               "text": "Hello via ticks",
-              "recipient": "bob_pub",
               "time_now_ms": 1000
             },
-            "identity": "alice"
+            "identity": "alice",
+            "env": {"CRYPTO_MODE": "dummy"}
           },
           "ticks": 2,
           "then": {
             "return": {
-              "return": "Message sent to outgoing"
+              "return": "Message broadcast to 2 peers"
             },
             "db": {
               "state": {
                 "messages": [{
                   "text": "Hello via ticks",
-                  "sender": "*",
-                  "recipient": "bob_pub"
+                  "sender": "*"
                 }],
                 "outgoing": []
               }

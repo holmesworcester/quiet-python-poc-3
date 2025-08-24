@@ -20,6 +20,7 @@ paths:
           application/json:
             schema:
               type: object
+              required: []
               properties:
                 name:
                   type: string
@@ -31,6 +32,7 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [identityId, publicKey]
                 properties:
                   identityId:
                     type: string
@@ -46,11 +48,13 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [identities]
                 properties:
                   identities:
                     type: array
                     items:
                       type: object
+                      required: [identityId, publicKey]
                       properties:
                         identityId:
                           type: string
@@ -76,6 +80,7 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [inviteLink]
                 properties:
                   inviteLink:
                     type: string
@@ -104,6 +109,7 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [identityId, publicKey]
                 properties:
                   identityId:
                     type: string
@@ -134,6 +140,7 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [messageId, text]
                 properties:
                   messageId:
                     type: string
@@ -162,11 +169,13 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [messages]
                 properties:
                   messages:
                     type: array
                     items:
                       type: object
+                      required: [messageId, text, timestamp, sender]
                       properties:
                         messageId:
                           type: string
@@ -200,6 +209,7 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [peerId]
                 properties:
                   peerId:
                     type: string

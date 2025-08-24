@@ -9,8 +9,8 @@
           "db": {
             "state": {
               "peers": [
-                {"pubkey": "peer1", "name": "Alice"},
-                {"pubkey": "peer2", "name": "Bob"}
+                {"pubkey": "peer1", "name": "Alice", "received_by": "identity1"},
+                {"pubkey": "peer2", "name": "Bob", "received_by": "identity1"}
               ]
             },
             "eventStore": [
@@ -24,15 +24,15 @@
               "type": "sync_peers",
               "sender": "peer3"
             },
-            "metadata": {}
+            "metadata": {"received_by": "identity1"}
           }
         },
         "then": {
           "db": {
             "state": {
               "peers": [
-                {"pubkey": "peer1", "name": "Alice"},
-                {"pubkey": "peer2", "name": "Bob"}
+                {"pubkey": "peer1", "name": "Alice", "received_by": "identity1"},
+                {"pubkey": "peer2", "name": "Bob", "received_by": "identity1"}
               ],
               "outgoing": [
                 {
@@ -116,8 +116,10 @@
                   {"pubkey": "id2", "privkey": "id2_priv", "name": "Identity2"}
                 ],
                 "peers": [
-                  {"pubkey": "peer1", "name": "Peer1"},
-                  {"pubkey": "peer2", "name": "Peer2"}
+                  {"pubkey": "peer1", "name": "Peer1", "received_by": "id1"},
+                  {"pubkey": "peer2", "name": "Peer2", "received_by": "id1"},
+                  {"pubkey": "peer1", "name": "Peer1", "received_by": "id2"},
+                  {"pubkey": "peer2", "name": "Peer2", "received_by": "id2"}
                 ]
               }
             },
@@ -134,8 +136,10 @@
                   {"pubkey": "id2", "privkey": "id2_priv", "name": "Identity2"}
                 ],
                 "peers": [
-                  {"pubkey": "peer1", "name": "Peer1"},
-                  {"pubkey": "peer2", "name": "Peer2"}
+                  {"pubkey": "peer1", "name": "Peer1", "received_by": "id1"},
+                  {"pubkey": "peer2", "name": "Peer2", "received_by": "id1"},
+                  {"pubkey": "peer1", "name": "Peer1", "received_by": "id2"},
+                  {"pubkey": "peer2", "name": "Peer2", "received_by": "id2"}
                 ],
                 "outgoing": [
                   {
@@ -176,8 +180,10 @@
                   {"pubkey": "bob", "privkey": "bob_priv", "name": "Bob"}
                 ],
                 "peers": [
-                  {"pubkey": "alice", "name": "Alice"},
-                  {"pubkey": "bob", "name": "Bob"}
+                  {"pubkey": "alice", "name": "Alice", "received_by": "alice"},
+                  {"pubkey": "bob", "name": "Bob", "received_by": "alice"},
+                  {"pubkey": "alice", "name": "Alice", "received_by": "bob"},
+                  {"pubkey": "bob", "name": "Bob", "received_by": "bob"}
                 ],
                 "messages": []
               },
@@ -238,8 +244,10 @@
             "db": {
               "state": {
                 "peers": [
-                  {"pubkey": "alice", "name": "Alice"},
-                  {"pubkey": "bob", "name": "Bob"}
+                  {"pubkey": "alice", "name": "Alice", "received_by": "alice"},
+                  {"pubkey": "bob", "name": "Bob", "received_by": "alice"},
+                  {"pubkey": "alice", "name": "Alice", "received_by": "bob"},
+                  {"pubkey": "bob", "name": "Bob", "received_by": "bob"}
                 ],
                 "messages": []
               },
@@ -270,8 +278,10 @@
                   {"pubkey": "bob", "privkey": "bob_priv", "name": "Bob"}
                 ],
                 "peers": [
-                  {"pubkey": "alice", "name": "Alice"},
-                  {"pubkey": "bob", "name": "Bob"}
+                  {"pubkey": "alice", "name": "Alice", "received_by": "alice"},
+                  {"pubkey": "bob", "name": "Bob", "received_by": "alice"},
+                  {"pubkey": "alice", "name": "Alice", "received_by": "bob"},
+                  {"pubkey": "bob", "name": "Bob", "received_by": "bob"}
                 ]
               },
               "eventStore": {
@@ -308,9 +318,15 @@
                   {"pubkey": "charlie", "privkey": "charlie_priv", "name": "Charlie"}
                 ],
                 "peers": [
-                  {"pubkey": "alice", "name": "Alice"},
-                  {"pubkey": "bob", "name": "Bob"},
-                  {"pubkey": "charlie", "name": "Charlie"}
+                  {"pubkey": "alice", "name": "Alice", "received_by": "alice"},
+                  {"pubkey": "bob", "name": "Bob", "received_by": "alice"},
+                  {"pubkey": "charlie", "name": "Charlie", "received_by": "alice"},
+                  {"pubkey": "alice", "name": "Alice", "received_by": "bob"},
+                  {"pubkey": "bob", "name": "Bob", "received_by": "bob"},
+                  {"pubkey": "charlie", "name": "Charlie", "received_by": "bob"},
+                  {"pubkey": "alice", "name": "Alice", "received_by": "charlie"},
+                  {"pubkey": "bob", "name": "Bob", "received_by": "charlie"},
+                  {"pubkey": "charlie", "name": "Charlie", "received_by": "charlie"}
                 ]
               },
               "eventStore": {
