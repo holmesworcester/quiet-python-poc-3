@@ -11,33 +11,10 @@ def execute(input_data, identity, db):
     incoming_blobs = db.get('incoming', [])[:]
     db['incoming'] = []
     
-    # Process each blob
-    for blob in incoming_blobs:
-        # For message_via_tor, incoming blobs are already in envelope format
-        # Just ensure they have the proper structure
-        envelope = ensure_envelope_format(blob)
-        
-        # Handle the envelope
-        db = handle(db, envelope, input_data.get("time_now_ms"), identity)
+    # Process each envelope
+    for envelope in incoming_blobs:
+        # tor_simulator always provides proper envelopes
+        # Handle the envelope with the recipient from the envelope
+        db = handle(db, envelope, input_data.get("time_now_ms"), envelope.get("recipient"))
     
     return {"db": db}
-
-
-def ensure_envelope_format(blob):
-    """
-    Ensure the blob is in proper envelope format.
-    For message_via_tor, we expect blobs to already contain the event data.
-    """
-    # If it's already an envelope, return as-is
-    if "data" in blob and "metadata" in blob:
-        return blob
-    
-    # Otherwise, wrap it in envelope format
-    return {
-        "data": blob,
-        "metadata": {
-            "origin": blob.get("origin"),
-            "receivedAt": blob.get("received_at"),
-            "selfGenerated": False
-        }
-    }

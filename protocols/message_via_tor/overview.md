@@ -16,7 +16,7 @@ Like Slack (or Tor) a client can have multiple identities, so we can easily test
 - `join` (consumes a valid invite link, calls `create.peer` for the `peer` in `invite`)
 
 `peer` has:
-- `validate` (checks that it has a public key, and adds to Projection)
+- `projector` (checks that it has a public key, and adds to Projection)
 - `create` (creates and Projects a new `peer` event) (NOTE: projection should be automatic for creation)
 
 `message` has:
@@ -25,10 +25,11 @@ Like Slack (or Tor) a client can have multiple identities, so we can easily test
 - `list` (given a `peer` public key, returns all messages known to that peer with their handles and timestamps, as json, called by API e.g.)
 
 `sync-peers` has:
-- `validate` (assumes that only invitees and members know this pk, calls `outgoing.create` on all `peer` known to that identity)
-- `create` (makes a `sync-request` event given a sender `peer`)
-- `send` (calls `outgoing.create` on the `sync-request` event, given a recipient `peer`)
-- a job that every tick, from every `peer` sends `sync-request` events to all their known `peer`s.
+- `projector` (assumes that only invitees and members know this pk, calls `outgoing.create` on all `peer` known to that identity)
+- `create` (makes a `sync-peers` event given a sender `peer`)
+- `send` (calls `outgoing.create` on the `sync-peers` event, given a recipient `peer`)
+- a job that every tick, from every `peer` sends `sync-peers
+` events to all their known `peer`s.
 
 `tor-simulator` has:
 - `deliver` - converts all `outgoing` events to a recipient `peer` to incoming events for that recipient `peer`.
@@ -40,4 +41,4 @@ Like Slack (or Tor) a client can have multiple identities, so we can easily test
 
 `outgoing` envelope has address information of recipient.
 
-Imagine an API that has access to these commands. Users create an identity with a peer, invite others or join a new network (the API enforces that they don't invite others and then join) and they send a message, which is stored locally and added to `outgoing`. `tor-simulator` converts all outgoing to incoming, and the recipient peer identifiers on each incoming event ensure routing to the correct identity. `sync-request` events go out on every tick and when validated by other peers they lead to all `message` and `peer` events being synced (inefficiently!).
+Imagine an API that has access to these commands. Users create an identity with a peer, invite others or join a new network (the API enforces that they don't invite others and then join) and they send a message, which is stored locally and added to `outgoing`. `tor-simulator` converts all outgoing to incoming, and the recipient peer identifiers on each incoming event ensure routing to the correct identity. `sync-peers` events go out on every tick and when validated by other peers they lead to all `message` and `peer` events being synced (inefficiently!).

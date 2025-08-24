@@ -19,13 +19,13 @@
             }
           },
           "envelope": {
+            "recipient": "identity1",
             "data": {
               "type": "sync_peers",
               "sender": "peer3"
             },
             "metadata": {}
-          },
-          "current_identity": "identity1"
+          }
         },
         "then": {
           "db": {
@@ -162,5 +162,270 @@
       ]
     }
   },
-  "job": "sync_all"
+  "job": "sync_all",
+  "multi_tick_tests": [
+    {
+      "description": "Test full peer syncing flow between two identities",
+      "ticks": [
+        {
+          "given": {
+            "db": {
+              "state": {
+                "identities": [
+                  {"pubkey": "alice", "name": "Alice"},
+                  {"pubkey": "bob", "name": "Bob"}
+                ],
+                "peers": [
+                  {"pubkey": "alice", "name": "Alice"},
+                  {"pubkey": "bob", "name": "Bob"}
+                ],
+                "messages": [
+                  {"sender": "alice", "recipient": "bob", "text": "Hello Bob!", "timestamp": 1000},
+                  {"sender": "bob", "recipient": "alice", "text": "Hi Alice!", "timestamp": 2000}
+                ]
+              },
+              "eventStore": {
+                "alice": [
+                  {"type": "peer", "pubkey": "alice", "name": "Alice"},
+                  {"type": "message", "sender": "alice", "recipient": "bob", "text": "Hello Bob!", "timestamp": 1000}
+                ],
+                "bob": [
+                  {"type": "peer", "pubkey": "bob", "name": "Bob"},
+                  {"type": "message", "sender": "bob", "recipient": "alice", "text": "Hi Alice!", "timestamp": 2000}
+                ]
+              }
+            }
+          },
+          "handlers": ["sync_peers", "tor_simulator"],
+          "then": {
+            "db": {
+              "state": {
+                "outgoing": [],
+                "incoming": [
+                  {
+                    "recipient": "alice",
+                    "data": {"type": "sync_peers", "sender": "bob"}
+                  },
+                  {
+                    "recipient": "bob",
+                    "data": {"type": "sync_peers", "sender": "alice"}
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "given": {},
+          "handlers": ["incoming", "sync_peers", "tor_simulator"],
+          "then": {
+            "db": {
+              "state": {
+                "outgoing": [],
+                "incoming": [
+                  {
+                    "recipient": "bob",
+                    "data": {"type": "peer", "pubkey": "alice", "name": "Alice"}
+                  },
+                  {
+                    "recipient": "bob",
+                    "data": {"type": "message", "sender": "alice", "recipient": "bob", "text": "Hello Bob!", "timestamp": 1000}
+                  },
+                  {
+                    "recipient": "alice",
+                    "data": {"type": "peer", "pubkey": "bob", "name": "Bob"}
+                  },
+                  {
+                    "recipient": "alice",
+                    "data": {"type": "message", "sender": "bob", "recipient": "alice", "text": "Hi Alice!", "timestamp": 2000}
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "given": {},
+          "handlers": ["incoming", "peer", "message"],
+          "then": {
+            "db": {
+              "state": {
+                "peers": [
+                  {"pubkey": "alice", "name": "Alice"},
+                  {"pubkey": "bob", "name": "Bob"}
+                ],
+                "messages": [
+                  {"sender": "alice", "recipient": "bob", "text": "Hello Bob!", "timestamp": 1000},
+                  {"sender": "bob", "recipient": "alice", "text": "Hi Alice!", "timestamp": 2000}
+                ]
+              },
+              "eventStore": {
+                "alice": [
+                  {"type": "peer", "pubkey": "alice", "name": "Alice"},
+                  {"type": "message", "sender": "alice", "recipient": "bob", "text": "Hello Bob!", "timestamp": 1000},
+                  {"type": "peer", "pubkey": "bob", "name": "Bob"},
+                  {"type": "message", "sender": "bob", "recipient": "alice", "text": "Hi Alice!", "timestamp": 2000}
+                ],
+                "bob": [
+                  {"type": "peer", "pubkey": "bob", "name": "Bob"},
+                  {"type": "message", "sender": "bob", "recipient": "alice", "text": "Hi Alice!", "timestamp": 2000},
+                  {"type": "peer", "pubkey": "alice", "name": "Alice"},
+                  {"type": "message", "sender": "alice", "recipient": "bob", "text": "Hello Bob!", "timestamp": 1000}
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "description": "Test three-way peer syncing with Charlie joining late",
+      "ticks": [
+        {
+          "given": {
+            "db": {
+              "state": {
+                "identities": [
+                  {"pubkey": "alice", "name": "Alice"},
+                  {"pubkey": "bob", "name": "Bob"}
+                ],
+                "peers": [
+                  {"pubkey": "alice", "name": "Alice"},
+                  {"pubkey": "bob", "name": "Bob"}
+                ]
+              },
+              "eventStore": {
+                "alice": [{"type": "peer", "pubkey": "alice", "name": "Alice"}],
+                "bob": [{"type": "peer", "pubkey": "bob", "name": "Bob"}]
+              }
+            }
+          },
+          "handlers": ["sync_peers", "tor_simulator"],
+          "then": {
+            "db": {
+              "state": {
+                "incoming": [
+                  {
+                    "recipient": "alice",
+                    "data": {"type": "sync_peers", "sender": "bob"}
+                  },
+                  {
+                    "recipient": "bob",
+                    "data": {"type": "sync_peers", "sender": "alice"}
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "given": {
+            "db": {
+              "state": {
+                "identities": [
+                  {"pubkey": "alice", "name": "Alice"},
+                  {"pubkey": "bob", "name": "Bob"},
+                  {"pubkey": "charlie", "name": "Charlie"}
+                ],
+                "peers": [
+                  {"pubkey": "alice", "name": "Alice"},
+                  {"pubkey": "bob", "name": "Bob"},
+                  {"pubkey": "charlie", "name": "Charlie"}
+                ]
+              },
+              "eventStore": {
+                "charlie": [{"type": "peer", "pubkey": "charlie", "name": "Charlie"}]
+              }
+            }
+          },
+          "handlers": ["incoming", "sync_peers", "tor_simulator"],
+          "then": {
+            "db": {
+              "state": {
+                "incoming": [
+                  {
+                    "recipient": "alice",
+                    "data": {"type": "sync_peers", "sender": "charlie"}
+                  },
+                  {
+                    "recipient": "bob",
+                    "data": {"type": "sync_peers", "sender": "charlie"}
+                  },
+                  {
+                    "recipient": "charlie",
+                    "data": {"type": "sync_peers", "sender": "alice"}
+                  },
+                  {
+                    "recipient": "charlie",
+                    "data": {"type": "sync_peers", "sender": "bob"}
+                  },
+                  {
+                    "recipient": "bob",
+                    "data": {"type": "peer", "pubkey": "alice", "name": "Alice"}
+                  },
+                  {
+                    "recipient": "alice",
+                    "data": {"type": "peer", "pubkey": "bob", "name": "Bob"}
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "given": {},
+          "handlers": ["incoming", "sync_peers", "tor_simulator"],
+          "then": {
+            "db": {
+              "state": {
+                "incoming": [
+                  {
+                    "recipient": "charlie",
+                    "data": {"type": "peer", "pubkey": "alice", "name": "Alice"}
+                  },
+                  {
+                    "recipient": "charlie",
+                    "data": {"type": "peer", "pubkey": "bob", "name": "Bob"}
+                  },
+                  {
+                    "recipient": "alice",
+                    "data": {"type": "peer", "pubkey": "charlie", "name": "Charlie"}
+                  },
+                  {
+                    "recipient": "bob",
+                    "data": {"type": "peer", "pubkey": "charlie", "name": "Charlie"}
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "given": {},
+          "handlers": ["incoming", "peer"],
+          "then": {
+            "db": {
+              "eventStore": {
+                "alice": [
+                  {"type": "peer", "pubkey": "alice", "name": "Alice"},
+                  {"type": "peer", "pubkey": "bob", "name": "Bob"},
+                  {"type": "peer", "pubkey": "charlie", "name": "Charlie"}
+                ],
+                "bob": [
+                  {"type": "peer", "pubkey": "bob", "name": "Bob"},
+                  {"type": "peer", "pubkey": "alice", "name": "Alice"},
+                  {"type": "peer", "pubkey": "charlie", "name": "Charlie"}
+                ],
+                "charlie": [
+                  {"type": "peer", "pubkey": "charlie", "name": "Charlie"},
+                  {"type": "peer", "pubkey": "alice", "name": "Alice"},
+                  {"type": "peer", "pubkey": "bob", "name": "Bob"}
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
 }

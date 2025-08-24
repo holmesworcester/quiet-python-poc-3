@@ -399,7 +399,7 @@ def validate_protocol(protocol_dir: str):
 
 def main():
     """Main entry point."""
-    protocols = ['protocols/framework_tests', 'protocols/message_via_tor']
+    protocols = ['protocols/framework_tests', 'protocols/message_via_tor', 'protocols/sync_via_tor']
     
     all_passed = True
     for protocol in protocols:

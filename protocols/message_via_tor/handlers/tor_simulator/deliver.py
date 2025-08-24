@@ -22,6 +22,7 @@ def execute(input_data, identity, db):
     for envelope in outgoing:
         # Wrap as pre-decrypted envelope for incoming handler
         incoming_envelope = {
+            "recipient": envelope.get("recipient"),
             "envelope": True,
             "data": envelope.get("data"),
             "metadata": {

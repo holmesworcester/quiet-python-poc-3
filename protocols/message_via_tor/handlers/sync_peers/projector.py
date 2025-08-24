@@ -19,13 +19,14 @@ def project(db, envelope, time_now_ms, current_identity):
     if 'outgoing' not in db['state']:
         db['state']['outgoing'] = []
     
-    # Get all peer events from eventStore and send to requester
+    # Get all peer and message events from eventStore and send to requester
     event_store = db.get('eventStore', {})
     
     for peer_pubkey, events in event_store.items():
         for event in events:
-            if event.get('type') == 'peer':
-                # Create outgoing envelope for this peer event
+            event_type = event.get('type')
+            if event_type in ['peer', 'message']:
+                # Create outgoing envelope for this event
                 outgoing = {
                     'recipient': sender,
                     'data': event
