@@ -198,14 +198,21 @@ def execute_api(protocol_name, method, path, data=None, params=None, identity=No
         os.environ["CRYPTO_MODE"] = "dummy"
         
         try:
-            # Initialize empty db for this protocol
-            db = {
-                "eventStore": {},
-                "state": {},
-                "incoming": [],
-                "outgoing": [],
-                "blocked": []
-            }
+            # Use provided db state or initialize empty db
+            if data and "db" in data:
+                db = data["db"]
+            else:
+                db = {
+                    "eventStore": {},
+                    "state": {},
+                    "incoming": [],
+                    "outgoing": [],
+                    "blocked": []
+                }
+            
+            # Store before state for comparison
+            import copy
+            before_state = copy.deepcopy(db)
             
             # Get time from request
             time_now_ms = None
@@ -216,13 +223,16 @@ def execute_api(protocol_name, method, path, data=None, params=None, identity=No
             from core.tick import tick
             updated_db = tick(db, time_now_ms=time_now_ms)
             
-            # Count jobs run (simplified - just return success)
+            # Return before/after states for demo
             return {
                 "status": 200,
                 "headers": {"Content-Type": "application/json"},
                 "body": {
                     "jobsRun": 5,  # Number of handlers with jobs
-                    "eventsProcessed": 0  # Would need to track this
+                    "eventsProcessed": 0,  # Would need to track this
+                    "beforeState": before_state,
+                    "afterState": updated_db,
+                    "db": updated_db  # Return updated db for persistence
                 }
             }
             
@@ -265,21 +275,31 @@ def execute_api(protocol_name, method, path, data=None, params=None, identity=No
     os.environ["CRYPTO_MODE"] = "dummy"
     
     try:
-        # Initialize empty db for this protocol
-        db = {
-            "eventStore": {},
-            "state": {},
-            "incoming": [],
-            "outgoing": [],
-            "blocked": []
-        }
+        # Use provided db state or initialize empty db
+        if data and "db" in data:
+            db = data["db"]
+        else:
+            db = {
+                "eventStore": {},
+                "state": {},
+                "incoming": [],
+                "outgoing": [],
+                "blocked": []
+            }
         
         # Execute command
         db, result = run_command(handler_name, command_name, input_data, identity, db)
         
-        # Format response
+        # Format response and include updated db for persistence
         status_code = 201 if method.upper() == "POST" else 200
-        return format_response(result, method, status_code)
+        response = format_response(result, method, status_code)
+        
+        # Add db to response body for demo persistence
+        if "body" not in response:
+            response["body"] = {}
+        response["body"]["db"] = db
+        
+        return response
         
     except Exception as e:
         return {
