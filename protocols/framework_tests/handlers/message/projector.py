@@ -1,4 +1,4 @@
-def project(db, envelope, time_now_ms, current_identity):
+def project(db, envelope, time_now_ms):
     """
     Project message events into state.
     Validates (e.g., known sender), updates state.messages if valid.
@@ -14,15 +14,11 @@ def project(db, envelope, time_now_ms, current_identity):
     # Get sender
     sender = data.get("sender") or metadata.get("sender")
     
-    # Store in eventStore (per-identity)
+    # Store in eventStore as a list
     if 'eventStore' not in db:
-        db['eventStore'] = {}
+        db['eventStore'] = []
     
-    if sender and sender not in db['eventStore']:
-        db['eventStore'][sender] = []
-    
-    if sender:
-        db['eventStore'][sender].append(data)
+    db['eventStore'].append(data)
     
     # Check if sender is known
     known_senders = db['state'].get("known_senders", [])

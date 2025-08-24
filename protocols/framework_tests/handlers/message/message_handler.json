@@ -31,11 +31,11 @@
       {
         "description": "Valid sender's message is projected to state",
         "given": {
-          "db": {"eventStore": {}, "state": {"known_senders": ["pubkey1"]}},
+          "db": {"eventStore": [], "state": {"known_senders": ["pubkey1"]}},
           "newEvent": {"type": "message", "sender": "pubkey1", "text": "Hello"}
         },
         "then": {
-          "db": {"eventStore": {"pubkey1": [{"type": "message", "text": "Hello", "*": "*"}]}, "state": {"messages": [{"text": "Hello", "*": "*"}]}}
+          "db": {"eventStore": [{"type": "message", "text": "Hello", "sender": "pubkey1"}], "state": {"messages": [{"text": "Hello", "*": "*"}]}}
         }
       },
       {
@@ -45,7 +45,7 @@
           "newEvent": {"type": "message", "sender": "unknown", "text": "Invalid"}
         },
         "then": {
-          "db": {"eventStore": {"unknown": [{"type": "message", "text": "Invalid", "*": "*"}]}, "state": {"messages": []}}
+          "db": {"eventStore": [{"type": "message", "text": "Invalid", "sender": "unknown"}], "state": {"messages": []}}
         }
       }
     ]
@@ -128,7 +128,7 @@
         {
           "description": "Create command returns new message event",
           "given": {"db": {}, "params": {"text": "Hello"}},
-          "then": {"return": {"return": "Created", "new_events": [{"type": "message", "text": "Hello"}]}}
+          "then": {"return": {"return": "Created", "new_events": [{"type": "message", "text": "Hello", "sender": "*"}]}}
         }
       ]
     }

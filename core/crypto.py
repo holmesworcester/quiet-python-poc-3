@@ -168,7 +168,10 @@ def decrypt(ciphertext, nonce, key):
         encrypted = nacl.utils.EncryptedMessage(nonce_bytes + ciphertext_bytes)
         
         return box.decrypt(encrypted)
-    except:
+    except Exception as e:
+        import os
+        if os.environ.get("DEBUG_CRYPTO"):
+            print(f"[crypto.decrypt] Error: {e}")
         return None
 
 

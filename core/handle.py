@@ -3,7 +3,7 @@ import os
 from core.handler_discovery import build_handler_map, load_handler_config
 
 
-def handle(db, envelope, time_now_ms, current_identity):
+def handle(db, envelope, time_now_ms):
     """
     Route envelopes to appropriate handlers based on type or error state.
     """
@@ -68,7 +68,7 @@ def handle(db, envelope, time_now_ms, current_identity):
                 db["state"] = {}
             
             # Run projector with full envelope
-            result = projector_module.project(db, envelope, time_now_ms, current_identity)
+            result = projector_module.project(db, envelope, time_now_ms)
             if result is not None:
                 db = result
             

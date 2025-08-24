@@ -28,16 +28,14 @@
                 }
               ]
             },
-            "eventStore": {
-              "pub123": [
-                {
-                  "type": "identity",
-                  "pubkey": "pub123",
-                  "privkey": "priv123",
-                  "name": "Alice"
-                }
-              ]
-            }
+            "eventStore": [
+              {
+                "type": "identity",
+                "pubkey": "pub123",
+                "privkey": "priv123",
+                "name": "Alice"
+              }
+            ]
           }
         }
       }

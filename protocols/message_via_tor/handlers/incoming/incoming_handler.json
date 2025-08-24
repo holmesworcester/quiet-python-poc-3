@@ -16,20 +16,18 @@
                 "data": { "type": "message", "text": "Test", "sender": "alice" },
                 "metadata": { "origin": "network", "receivedAt": 1000 }
               }],
-              "state": { "known_senders": ["alice"] }
+              "state": {}
             },
             "params": { "time_now_ms": 1000 }
           },
           "then": {
             "db": {
               "incoming": [],
-              "eventStore": {
-                "*": [{
-                  "type": "message",
-                  "text": "Test",
-                  "sender": "alice"
-                }]
-              }
+              "eventStore": [{
+                "type": "message",
+                "text": "Test",
+                "sender": "alice"
+              }]
             }
           }
         },
@@ -56,12 +54,10 @@
           "then": {
             "db": {
               "incoming": [],
-              "eventStore": {
-                "*": [
-                  { "type": "message", "text": "First", "sender": "alice" },
-                  { "type": "message", "text": "Second", "sender": "bob" }
-                ]
-              }
+              "eventStore": [
+                { "type": "message", "text": "First", "sender": "alice" },
+                { "type": "message", "text": "Second", "sender": "bob" }
+              ]
             }
           }
         }

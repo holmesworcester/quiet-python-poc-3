@@ -212,7 +212,6 @@ paths:
         - sync_peers.sync_all - Synchronizes peer information
         - tor_simulator.deliver - Simulates Tor network delivery  
         - incoming.process_incoming - Processes incoming messages
-        - missing_key.retry_pending - Retries messages with missing keys
         - unknown.purge_old - Cleans up old unknown events
       operationId: tick.run
       requestBody:

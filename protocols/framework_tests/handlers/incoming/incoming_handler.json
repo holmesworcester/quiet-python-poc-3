@@ -42,17 +42,14 @@
           }
         },
         {
-          "description": "Successfully decrypt two-layer envelope and route to handler (real crypto)",
+          "description": "Generate encrypted blob and decrypt it (real crypto)",
+          "comment": "This test generates encrypted data using the actual encryption code, then decrypts it",
           "given": {
             "params": {"time_now_ms": 1000},
             "identity": null,
             "env": {"CRYPTO_MODE": "real"},
             "db": {
-              "incoming": [{
-                "data": "3083e1ce982abd7f59235aa1ea3c97046562c75205d4dab8affd2f3600d79958251b8f210901705f69905f35c33adf59a1485a316f765042145761b2352df8c6e722c613d69219475116e45e88b394aaaef838b00d6d51aa4d56523abaa337a6ba176111d06a75bc4f36fd815c901c641ad9d030dbd7cb270be150b9011b396d0d417743a6048a8080a0f1bfd4d8ab0a0c86a2366eee9c86d364185ab912e3ed98ec5d865d3544c4663b0ab5f5f75986e7c430a237230f9ad9a070059e786ecc00202d2a87411bc73df703119ed84cfb62d4ab04a02d3c540858da2c8e301ecc7bf02c43d6d1a41efe7646db78c446877535bfbd31fef6aa32399606357a03e04a82ef01f90c5a9f6419ef79d163699034cce5cd6bf3ab1d3a9def5d3ca9605660e77c7e42c5c99b01470700d23cddd2044377",
-                "origin": "peer1",
-                "received_at": 1000
-              }],
+              "incoming": [],
               "state": {
                 "key_map": {
                   "3083e1ce982abd7f59235aa1ea3c97046562c75205d4dab8affd2f3600d79958": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
@@ -61,6 +58,12 @@
                 "messages": [],
                 "known_senders": ["alice"]
               }
+            },
+            "setup": {
+              "type": "generate_encrypted_blob",
+              "inner_data": {"type": "message", "text": "Hello", "sender": "alice"},
+              "inner_key": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+              "outer_key": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
             }
           },
           "then": {
@@ -114,7 +117,7 @@
             "env": {"CRYPTO_MODE": "real"},
             "db": {
               "incoming": [{
-                "data": "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefencrypted_data_with_nonce",
+                "data": "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef123456789012345678901234567890123456789012345678some_encrypted_data_here",
                 "origin": "peer2",
                 "received_at": 2000
               }],

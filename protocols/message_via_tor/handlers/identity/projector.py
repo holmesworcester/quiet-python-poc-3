@@ -1,4 +1,4 @@
-def project(db, envelope, time_now_ms, current_identity):
+def project(db, envelope, time_now_ms):
     """
     Project identity events into state
     """
@@ -40,11 +40,9 @@ def project(db, envelope, time_now_ms, current_identity):
     
     # Store in eventStore
     if 'eventStore' not in db:
-        db['eventStore'] = {}
+        db['eventStore'] = []
     
-    if pubkey not in db['eventStore']:
-        db['eventStore'][pubkey] = []
-    
-    db['eventStore'][pubkey].append(data)
+    # Append the event data directly
+    db['eventStore'].append(data)
     
     return db

@@ -28,10 +28,11 @@ CREATE TABLE IF NOT EXISTS messages (
     event_id VARCHAR(64) UNIQUE NOT NULL,
     text TEXT NOT NULL,
     sender VARCHAR(64) NOT NULL,
-    recipient VARCHAR(64) NOT NULL,  -- Required for tor routing
+    recipient VARCHAR(64),  -- Optional, routing handled by envelopes
     reply_to VARCHAR(64),
     timestamp BIGINT NOT NULL,
     sig VARCHAR(128) NOT NULL,
+    unknown_peer BOOLEAN DEFAULT FALSE,
     ttl BIGINT,  -- Time-to-live for disappearing messages
     created_at BIGINT NOT NULL,
     INDEX idx_messages_sender (sender),

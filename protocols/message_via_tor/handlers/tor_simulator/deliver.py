@@ -21,14 +21,16 @@ def execute(input_data, identity, db):
     
     for envelope in outgoing:
         # Wrap as pre-decrypted envelope for incoming handler
+        recipient = envelope.get("recipient")
         incoming_envelope = {
-            "recipient": envelope.get("recipient"),
+            "recipient": recipient,
             "envelope": True,
             "data": envelope.get("data"),
             "metadata": {
                 "origin": "network",
                 "receivedAt": current_time_ms,
-                "selfGenerated": False
+                "selfGenerated": False,
+                "received_by": recipient  # Add who received this message
             }
         }
         db['incoming'].append(incoming_envelope)

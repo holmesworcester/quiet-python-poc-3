@@ -1,0 +1,212 @@
+{
+  "type": "peer",
+  "projector": {
+    "description": "Validates peer has public key and adds to projection",
+    "func": "projector.project",
+    "tests": [
+      {
+        "given": {
+          "db": {"state": {"identities": [{"pubkey": "test_identity", "privkey": "test_privkey", "name": "Test Identity"}]}},
+          "envelope": {
+            "data": {
+              "type": "peer",
+              "pubkey": "peer123",
+              "name": "Alice"
+            },
+            "metadata": {"received_by": "test_identity"}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "peers": [
+                {
+                  "pubkey": "peer123",
+                  "name": "Alice",
+                  "joined_via": "direct",
+                  "added_at": "*",
+                  "received_by": "test_identity"
+                }
+              ]
+            },
+            "eventStore": [
+              {
+                "type": "peer",
+                "pubkey": "peer123",
+                "name": "Alice"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "given": {
+          "db": {"state": {}},
+          "envelope": {
+            "data": {
+              "type": "peer",
+              "pubkey": ""
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {}
+          }
+        }
+      },
+      {
+        "description": "When peer event arrives, should remove unknown_peer flag from matching messages",
+        "given": {
+          "db": {
+            "state": {
+              "messages": [
+                {
+                  "text": "Hello from unknown",
+                  "sender": "new_peer",
+                  "timestamp": 1000,
+                  "unknown_peer": true,
+                  "received_by": "test_identity"
+                },
+                {
+                  "text": "Another message",
+                  "sender": "other_peer",
+                  "timestamp": 2000,
+                  "unknown_peer": true,
+                  "received_by": "test_identity"
+                }
+              ],
+              "peers": []
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "peer",
+              "pubkey": "new_peer",
+              "name": "New Peer"
+            },
+            "metadata": {"received_by": "test_identity"}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "messages": [
+                {
+                  "text": "Hello from unknown",
+                  "sender": "new_peer",
+                  "timestamp": 1000,
+                  "received_by": "test_identity"
+                },
+                {
+                  "text": "Another message",
+                  "sender": "other_peer",
+                  "timestamp": 2000,
+                  "unknown_peer": true,
+                  "received_by": "test_identity"
+                }
+              ],
+              "peers": [
+                {
+                  "pubkey": "new_peer",
+                  "name": "New Peer",
+                  "joined_via": "direct",
+                  "added_at": "*",
+                  "received_by": "test_identity"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "description": "Peer event should only remove unknown_peer flag for messages received by same identity",
+        "given": {
+          "db": {
+            "state": {
+              "messages": [
+                {
+                  "text": "Message for identity1",
+                  "sender": "new_peer",
+                  "timestamp": 1000,
+                  "unknown_peer": true,
+                  "received_by": "identity1"
+                },
+                {
+                  "text": "Message for identity2",
+                  "sender": "new_peer",
+                  "timestamp": 2000,
+                  "unknown_peer": true,
+                  "received_by": "identity2"
+                }
+              ],
+              "peers": []
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "peer",
+              "pubkey": "new_peer",
+              "name": "New Peer"
+            },
+            "metadata": {"received_by": "identity1"}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "messages": [
+                {
+                  "text": "Message for identity1",
+                  "sender": "new_peer",
+                  "timestamp": 1000,
+                  "received_by": "identity1"
+                },
+                {
+                  "text": "Message for identity2",
+                  "sender": "new_peer",
+                  "timestamp": 2000,
+                  "unknown_peer": true,
+                  "received_by": "identity2"
+                }
+              ],
+              "peers": [
+                {
+                  "pubkey": "new_peer",
+                  "name": "New Peer",
+                  "joined_via": "direct",
+                  "added_at": "*",
+                  "received_by": "identity1"
+                }
+              ]
+            }
+          }
+        }
+      }
+    ]
+  },
+  "commands": {
+    "create": {
+      "description": "Creates a new peer event",
+      "func": "create.execute",
+      "tests": [
+        {
+          "given": {
+            "db": {},
+            "params": {"pubkey": "peer456", "name": "Bob"}
+          },
+          "then": {
+            "return": {
+              "return": "Peer created",
+              "newEvents": [
+                {"type": "peer", "pubkey": "peer456", "name": "Bob"}
+              ],
+              "peer": {"pubkey": "peer456", "name": "Bob"}
+            }
+          }
+        }
+      ]
+    }
+  }
+}

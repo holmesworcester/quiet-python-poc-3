@@ -14,7 +14,7 @@ def execute(input_data, identity, db):
     # Process each envelope
     for envelope in incoming_blobs:
         # tor_simulator always provides proper envelopes
-        # Handle the envelope with the recipient from the envelope
-        db = handle(db, envelope, input_data.get("time_now_ms"), envelope.get("recipient"))
+        # Handle the envelope
+        db = handle(db, envelope, input_data.get("time_now_ms"))
     
     return {"db": db}

@@ -5,7 +5,7 @@ from typing import List, Dict, Optional
 
 def discover_handlers(base_path: str = "handlers") -> List[str]:
     """
-    Discover all available handlers by looking for directories containing handler.json
+    Discover all available handlers by looking for directories containing {folder}_handler.json
     
     Args:
         base_path: Base directory to search for handlers (default: "handlers")
@@ -21,7 +21,8 @@ def discover_handlers(base_path: str = "handlers") -> List[str]:
     for item in os.listdir(base_path):
         handler_dir = os.path.join(base_path, item)
         if os.path.isdir(handler_dir):
-            handler_json = os.path.join(handler_dir, "handler.json")
+            # Look for {folder}_handler.json pattern
+            handler_json = os.path.join(handler_dir, f"{item}_handler.json")
             if os.path.exists(handler_json):
                 handlers.append(item)
                 
@@ -54,7 +55,7 @@ def get_handler_commands(handler_name: str, base_path: str = "handlers") -> List
 
 def load_handler_config(handler_name: str, base_path: str = "handlers") -> Optional[Dict]:
     """
-    Load handler configuration from handler.json
+    Load handler configuration from {handler_name}_handler.json
     
     Args:
         handler_name: Name of the handler
@@ -63,7 +64,7 @@ def load_handler_config(handler_name: str, base_path: str = "handlers") -> Optio
     Returns:
         Handler configuration dict or None if not found
     """
-    handler_json_path = os.path.join(base_path, handler_name, "handler.json")
+    handler_json_path = os.path.join(base_path, handler_name, f"{handler_name}_handler.json")
     
     if not os.path.exists(handler_json_path):
         return None
@@ -117,7 +118,7 @@ def get_handler_path(handler_name: str, command: str, base_path: str = "handlers
 
 def get_handler_schema(handler_name: str, base_path: str = "handlers") -> Optional[Dict]:
     """
-    Get the event schema for a handler from its handler.json
+    Get the event schema for a handler from its {handler_name}_handler.json
     
     Args:
         handler_name: Name of the handler

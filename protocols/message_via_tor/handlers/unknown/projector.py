@@ -1,4 +1,4 @@
-def project(db, envelope, time_now_ms, current_identity):
+def project(db, envelope, time_now_ms):
     """
     Projects decrypted but unrecognized event types to unknown_events table.
     """

@@ -1,4 +1,4 @@
-def project(db, envelope, time_now_ms, current_identity):
+def project(db, envelope, time_now_ms):
     """
     Project unknown event types into unknown_events state.
     """

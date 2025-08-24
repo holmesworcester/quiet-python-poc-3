@@ -31,7 +31,7 @@ def execute(input_data, identity, db):
     
     return {
         "newlyCreatedEvents": [envelope],
-        "new_events": [{"type": "message", "text": content}],  # For test compatibility
+        "new_events": [{"type": "message", "text": content, "sender": "*"}],
         "return": "Created",
         "messageId": f"msg-{datetime.utcnow().timestamp()}"
     }

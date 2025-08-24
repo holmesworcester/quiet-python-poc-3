@@ -11,8 +11,6 @@
             "data": {"type": "unrecognized_type", "data": "some data"},
             "metadata": {
               "eventId": "event123",
-              "outerKeyHash": "key1",
-              "innerKeyHash": "key2",
               "origin": "peer1",
               "receivedAt": 1000
             }
@@ -26,8 +24,6 @@
                   "data": {"type": "unrecognized_type", "data": "some data"},
                   "metadata": {
                     "eventId": "event123",
-                    "outerKeyHash": "key1",
-                    "innerKeyHash": "key2",
                     "origin": "peer1",
                     "receivedAt": 1000
                   },

@@ -21,8 +21,10 @@ Like Slack (or Tor) a client can have multiple identities, so we can easily test
 
 `message` has:
 - `create` (consumes pubkey, message-text, and time_now_ms from tick, creates `message` event, puts it in the `outgoing` envelope with address information and projects to outgoing in state.)
-- `projector` (checks has pubkey matching known `peer`, has text, has time, else does nothing)
+- `projector` (checks has pubkey matching known `peer`, has text, has time, else does nothing or see note.)
 - `list` (given a `peer` public key, returns all messages known to that peer with their handles and timestamps, as json, called by API e.g.)
+
+Note: a message might arrive before the `peer` event, so it will not have a pubkey matching a known peer. To address these cases, the message projector should mark the messagee as `unknown-peer`, and the API should not show these messages. Then, whenever a `peer` arrives that matches the pubkey of an `unknown-peer` message, the peer projector should remove the `unknown-peer` flag. Another way to do this would be to have the message handler register a listener on new projected peers, check if they match an `unknown-peer` message, and modify the message.   
 
 `sync-peers` has:
 - `projector` (assumes that only invitees and members know this pk, calls `outgoing.create` on all `peer` known to that identity)

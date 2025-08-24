@@ -4,7 +4,7 @@ from core.handler_discovery import get_handler_path
 from core.handle import handle
 
 
-def tick(db, time_now_ms=None, current_identity=None):
+def tick(db, time_now_ms=None):
     """
     Main event loop - runs all handler jobs.
     The incoming handler job now handles message decryption and routing.
@@ -34,7 +34,16 @@ def run_command(handler_name, command_name, input_data, identity, db, time_now_m
     spec.loader.exec_module(command_module)
     
     # Execute command
-    result = command_module.execute(input_data, identity, db)
+    try:
+        result = command_module.execute(input_data, identity, db)
+    except Exception as e:
+        # Add context to the error
+        import traceback
+        error_msg = f"Error in {handler_name}.{command_name}: {str(e)}"
+        if os.environ.get("TEST_MODE"):
+            print(f"[tick] {error_msg}")
+            print(f"[tick] Traceback: {traceback.format_exc()}")
+        raise Exception(error_msg) from e
     
     # If command returned db modifications, apply them
     if isinstance(result, dict) and 'db' in result:
@@ -52,7 +61,7 @@ def run_command(handler_name, command_name, input_data, identity, db, time_now_m
                 }
             }
             # Project the event
-            db = handle(db, envelope, time_now_ms, identity)
+            db = handle(db, envelope, time_now_ms)
     
     return db, result
 

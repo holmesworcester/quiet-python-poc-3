@@ -1,4 +1,3 @@
-from datetime import datetime
 from core.crypto import sign, get_keypair
 import json
 import time
@@ -35,10 +34,6 @@ def execute(input_data, identity, db):
     if recipient:
         event_data["recipient"] = recipient
     
-    # Add replyTo if provided
-    reply_to = input_data.get("replyTo")
-    if reply_to:
-        event_data["replyTo"] = reply_to
     
     # Sign the canonical event
     data_str = json.dumps(event_data, sort_keys=True)

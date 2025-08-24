@@ -11,7 +11,7 @@
               "received_at": 1000
             }
           ],
-          "eventStore": {},
+          "eventStore": [],
           "state": {
             "messages": [],
             "known_senders": ["pubkey1"],
@@ -24,7 +24,7 @@
       "then": {
         "db": {
           "incoming": [],
-          "eventStore": {"pubkey1": [{"type": "message", "text": "Hello", "sender": "pubkey1"}]},
+          "eventStore": [{"type": "message", "text": "Hello", "sender": "pubkey1"}],
           "state": {"messages": [{"text": "Hello", "sender": "pubkey1"}]}
         }
       },

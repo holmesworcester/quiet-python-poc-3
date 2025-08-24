@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS messages (
     reply_to VARCHAR(64),
     timestamp BIGINT NOT NULL,
     sig VARCHAR(128) NOT NULL,
+    unknown_peer BOOLEAN DEFAULT FALSE,
     created_at BIGINT NOT NULL,
     INDEX idx_messages_sender (sender),
     INDEX idx_messages_recipient (recipient),

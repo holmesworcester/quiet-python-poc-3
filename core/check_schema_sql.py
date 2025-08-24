@@ -366,9 +366,11 @@ def validate_protocol(protocol_dir: str):
     all_warnings = []
     
     for root, dirs, files in os.walk(handlers_dir):
-        if 'handler.json' in files:
-            handler_path = os.path.join(root, 'handler.json')
-            handler_name = os.path.basename(os.path.dirname(handler_path))
+        # Look for {folder}_handler.json pattern
+        handler_name = os.path.basename(root)
+        handler_json_name = f"{handler_name}_handler.json"
+        if handler_json_name in files:
+            handler_path = os.path.join(root, handler_json_name)
             
             print(f"\nChecking handler: {handler_name}")
             errors, warnings = validator.validate_handler(handler_path)

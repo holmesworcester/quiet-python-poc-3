@@ -1,4 +1,5 @@
 import json
+import os
 from core.crypto import decrypt, hash, get_crypto_mode, encrypt
 from core.handle import handle
 
@@ -13,13 +14,21 @@ def execute(input_data, identity, db):
     db['incoming'] = []
     
     # Process each blob
-    for blob in incoming_blobs:
+    for i, blob in enumerate(incoming_blobs):
+        if os.environ.get("TEST_MODE"):
+            print(f"[process_incoming] Processing blob {i+1}/{len(incoming_blobs)}")
+        
         envelope = greedy_decrypt_blob(blob, db)
         if envelope is None:
+            if os.environ.get("TEST_MODE"):
+                print(f"[process_incoming] Blob {i+1} dropped (decryption failed)")
             continue  # Dropped
         
+        if os.environ.get("TEST_MODE"):
+            print(f"[process_incoming] Blob {i+1} decrypted successfully, handling envelope")
+        
         # Handle the envelope
-        db = handle(db, envelope, input_data.get("time_now_ms"), identity)
+        db = handle(db, envelope, input_data.get("time_now_ms"))
     
     return {"db": db}
 
@@ -29,6 +38,8 @@ def greedy_decrypt_blob(raw_blob, db):
     Attempt to decrypt an incoming blob through two layers.
     Wire format: <key_hash:64><nonce:48><ciphertext:remaining>
     """
+    if os.environ.get("TEST_MODE"):
+        print(f"[greedy_decrypt] CRYPTO_MODE={get_crypto_mode()}")
     # Check if this is already a decrypted envelope
     if "envelope" in raw_blob and "data" in raw_blob and "metadata" in raw_blob:
         # Already decrypted, return as-is
@@ -68,6 +79,8 @@ def greedy_decrypt_blob(raw_blob, db):
     outer_key = db.get("state", {}).get("key_map", {}).get(outer_hash)
     
     if not outer_key:
+        if os.environ.get("TEST_MODE"):
+            print(f"[greedy_decrypt] Missing outer key: {outer_hash}")
         envelope["metadata"]["error"] = f"Missing outer key: {outer_hash}"
         envelope["metadata"]["inNetwork"] = False
         envelope["metadata"]["missingHash"] = outer_hash
@@ -79,17 +92,31 @@ def greedy_decrypt_blob(raw_blob, db):
     else:
         # Real crypto with nonce
         try:
+            if os.environ.get("TEST_MODE"):
+                print(f"[greedy_decrypt] Attempting outer decrypt with:")
+                print(f"  - Cipher length: {len(outer_cipher)}")
+                print(f"  - Nonce: {outer_nonce}")
+                print(f"  - Key: {outer_key}")
             decrypted_outer = decrypt(outer_cipher, outer_nonce, outer_key)
             if isinstance(decrypted_outer, bytes):
                 decrypted_outer = decrypted_outer.decode('utf-8')
-        except Exception:
+        except Exception as e:
+            if os.environ.get("TEST_MODE"):
+                print(f"[greedy_decrypt] Outer decryption failed: {e}")
             return None  # Drop - decryption failed
         
     envelope["metadata"]["outerKeyHash"] = outer_hash
     
     try:
-        partial = json.loads(decrypted_outer) if isinstance(decrypted_outer, str) else json.loads(decrypted_outer.decode())
-    except (json.JSONDecodeError, UnicodeDecodeError):
+        if isinstance(decrypted_outer, str):
+            partial = json.loads(decrypted_outer)
+        elif isinstance(decrypted_outer, bytes):
+            partial = json.loads(decrypted_outer.decode())
+        else:
+            return None  # Drop - invalid data type
+    except (json.JSONDecodeError, UnicodeDecodeError, AttributeError) as e:
+        if os.environ.get("TEST_MODE"):
+            print(f"[greedy_decrypt] Failed to parse outer JSON: {e}")
         return None  # Drop - invalid JSON
     
     # Inner layer
@@ -111,25 +138,41 @@ def greedy_decrypt_blob(raw_blob, db):
     if get_crypto_mode() == "dummy":
         decrypted_inner = inner_data
     else:
-        # Use hash of the encrypted inner data as nonce
-        inner_nonce_full = hash(inner_data)
-        # NaCl expects 24-byte nonce, so take first 24 bytes of hash
-        inner_nonce = inner_nonce_full[:48]  # 48 hex chars = 24 bytes
+        # Real mode: inner data has format <nonce:48><ciphertext>
+        if len(inner_data) < 48:
+            if os.environ.get("TEST_MODE"):
+                print(f"[greedy_decrypt] Inner data too short for real crypto format")
+            return None  # Drop - invalid format
+        
+        inner_nonce = inner_data[:48]
+        inner_ciphertext = inner_data[48:]
         
         try:
-            decrypted_inner = decrypt(inner_data, inner_nonce, inner_key)
+            if os.environ.get("TEST_MODE"):
+                print(f"[greedy_decrypt] Attempting inner decrypt with:")
+                print(f"  - Cipher length: {len(inner_ciphertext)}")
+                print(f"  - Nonce: {inner_nonce}")
+                print(f"  - Key: {inner_key}")
+            decrypted_inner = decrypt(inner_ciphertext, inner_nonce, inner_key)
             if isinstance(decrypted_inner, bytes):
                 decrypted_inner = decrypted_inner.decode('utf-8')
-        except Exception:
+        except Exception as e:
+            if os.environ.get("TEST_MODE"):
+                print(f"[greedy_decrypt] Inner decryption failed: {e}")
             return None  # Drop - decryption failed
         
     envelope["metadata"]["innerKeyHash"] = inner_hash
     
     try:
-        envelope["data"] = json.loads(decrypted_inner) if isinstance(decrypted_inner, str) else json.loads(decrypted_inner.decode())
+        if isinstance(decrypted_inner, str):
+            envelope["data"] = json.loads(decrypted_inner)
+        elif isinstance(decrypted_inner, bytes):
+            envelope["data"] = json.loads(decrypted_inner.decode())
+        else:
+            return None  # Drop - invalid data type
         # Hash the canonical event for event_id
         envelope["metadata"]["eventId"] = hash(json.dumps(envelope["data"], sort_keys=True))
-    except (json.JSONDecodeError, UnicodeDecodeError):
+    except (json.JSONDecodeError, UnicodeDecodeError, AttributeError):
         return None  # Drop - invalid JSON
     
     return envelope
@@ -140,34 +183,26 @@ def create_encrypted_blob(inner_data, inner_key, outer_key):
     Helper to create properly encrypted test data.
     Returns the wire format blob.
     """
-    from core.crypto import encrypt, hash
+    from core.crypto import encrypt, hash, get_crypto_mode
     
     # Serialize inner data
     inner_json = json.dumps(inner_data)
     
-    # First encrypt to get initial ciphertext for hash-based nonce
-    inner_encrypted = encrypt(inner_json, inner_key)
-    
-    # Use hash of ciphertext as nonce for deterministic encryption
-    inner_nonce_full = hash(inner_encrypted["ciphertext"])
-    inner_nonce = inner_nonce_full[:48]  # 48 hex chars = 24 bytes
-    
-    # Re-encrypt with the deterministic nonce
-    box = __import__('nacl.secret', fromlist=['SecretBox']).SecretBox(
-        __import__('nacl.encoding', fromlist=['HexEncoder']).HexEncoder.decode(inner_key)
-    )
-    inner_ciphertext_bytes = __import__('nacl.encoding', fromlist=['HexEncoder']).HexEncoder.decode(inner_encrypted["ciphertext"])
-    inner_nonce_bytes = __import__('nacl.encoding', fromlist=['HexEncoder']).HexEncoder.decode(inner_nonce)
-    
-    # Encrypt with specific nonce
-    encrypted_msg = box.encrypt(inner_json.encode(), inner_nonce_bytes)
-    final_inner_ciphertext = __import__('nacl.encoding', fromlist=['HexEncoder']).HexEncoder.encode(encrypted_msg.ciphertext).decode()
+    if get_crypto_mode() == "dummy":
+        # In dummy mode, inner data is just the JSON string
+        inner_encrypted_data = inner_json
+    else:
+        # In real mode, properly encrypt the inner data
+        # We need to store both nonce and ciphertext for the inner layer
+        inner_encrypted = encrypt(inner_json, inner_key)
+        # Create wire format for inner layer: <nonce:48><ciphertext>
+        inner_encrypted_data = inner_encrypted["nonce"] + inner_encrypted["ciphertext"]
     
     # Create partial with encrypted inner data
     inner_key_hash = hash(inner_key)
     partial = {
         "innerHash": inner_key_hash,
-        "data": final_inner_ciphertext
+        "data": inner_encrypted_data
     }
     
     # Encrypt outer layer

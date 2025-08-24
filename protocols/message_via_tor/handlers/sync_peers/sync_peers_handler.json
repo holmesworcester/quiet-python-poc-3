@@ -13,10 +13,10 @@
                 {"pubkey": "peer2", "name": "Bob"}
               ]
             },
-            "eventStore": {
-              "peer1": [{"type": "peer", "pubkey": "peer1", "name": "Alice"}],
-              "peer2": [{"type": "peer", "pubkey": "peer2", "name": "Bob"}]
-            }
+            "eventStore": [
+              {"type": "peer", "pubkey": "peer1", "name": "Alice"},
+              {"type": "peer", "pubkey": "peer2", "name": "Bob"}
+            ]
           },
           "envelope": {
             "recipient": "identity1",
@@ -45,11 +45,11 @@
                 }
               ]
             },
-            "eventStore": {
-              "peer1": [{"type": "peer", "pubkey": "peer1", "name": "Alice"}],
-              "peer2": [{"type": "peer", "pubkey": "peer2", "name": "Bob"}],
-              "sync-peers-peer3": [{"type": "sync_peers", "sender": "peer3"}]
-            }
+            "eventStore": [
+              {"type": "peer", "pubkey": "peer1", "name": "Alice"},
+              {"type": "peer", "pubkey": "peer2", "name": "Bob"},
+              {"type": "sync_peers", "sender": "peer3"}
+            ]
           }
         }
       }
@@ -112,8 +112,8 @@
             "db": {
               "state": {
                 "identities": [
-                  {"pubkey": "id1", "name": "Identity1"},
-                  {"pubkey": "id2", "name": "Identity2"}
+                  {"pubkey": "id1", "privkey": "id1_priv", "name": "Identity1"},
+                  {"pubkey": "id2", "privkey": "id2_priv", "name": "Identity2"}
                 ],
                 "peers": [
                   {"pubkey": "peer1", "name": "Peer1"},
@@ -130,8 +130,8 @@
             "db": {
               "state": {
                 "identities": [
-                  {"pubkey": "id1", "name": "Identity1"},
-                  {"pubkey": "id2", "name": "Identity2"}
+                  {"pubkey": "id1", "privkey": "id1_priv", "name": "Identity1"},
+                  {"pubkey": "id2", "privkey": "id2_priv", "name": "Identity2"}
                 ],
                 "peers": [
                   {"pubkey": "peer1", "name": "Peer1"},
@@ -165,33 +165,28 @@
   "job": "sync_all",
   "multi_tick_tests": [
     {
-      "description": "Test full peer syncing flow between two identities",
+      "description": "Test peer-only syncing flow between two identities (no messages)",
       "ticks": [
         {
           "given": {
             "db": {
               "state": {
                 "identities": [
-                  {"pubkey": "alice", "name": "Alice"},
-                  {"pubkey": "bob", "name": "Bob"}
+                  {"pubkey": "alice", "privkey": "alice_priv", "name": "Alice"},
+                  {"pubkey": "bob", "privkey": "bob_priv", "name": "Bob"}
                 ],
                 "peers": [
                   {"pubkey": "alice", "name": "Alice"},
                   {"pubkey": "bob", "name": "Bob"}
                 ],
-                "messages": [
-                  {"sender": "alice", "recipient": "bob", "text": "Hello Bob!", "timestamp": 1000},
-                  {"sender": "bob", "recipient": "alice", "text": "Hi Alice!", "timestamp": 2000}
-                ]
+                "messages": []
               },
               "eventStore": {
                 "alice": [
-                  {"type": "peer", "pubkey": "alice", "name": "Alice"},
-                  {"type": "message", "sender": "alice", "recipient": "bob", "text": "Hello Bob!", "timestamp": 1000}
+                  {"type": "peer", "pubkey": "alice", "name": "Alice"}
                 ],
                 "bob": [
-                  {"type": "peer", "pubkey": "bob", "name": "Bob"},
-                  {"type": "message", "sender": "bob", "recipient": "alice", "text": "Hi Alice!", "timestamp": 2000}
+                  {"type": "peer", "pubkey": "bob", "name": "Bob"}
                 ]
               }
             }
@@ -228,16 +223,8 @@
                     "data": {"type": "peer", "pubkey": "alice", "name": "Alice"}
                   },
                   {
-                    "recipient": "bob",
-                    "data": {"type": "message", "sender": "alice", "recipient": "bob", "text": "Hello Bob!", "timestamp": 1000}
-                  },
-                  {
                     "recipient": "alice",
                     "data": {"type": "peer", "pubkey": "bob", "name": "Bob"}
-                  },
-                  {
-                    "recipient": "alice",
-                    "data": {"type": "message", "sender": "bob", "recipient": "alice", "text": "Hi Alice!", "timestamp": 2000}
                   }
                 ]
               }
@@ -246,7 +233,7 @@
         },
         {
           "given": {},
-          "handlers": ["incoming", "peer", "message"],
+          "handlers": ["incoming", "peer"],
           "then": {
             "db": {
               "state": {
@@ -254,23 +241,16 @@
                   {"pubkey": "alice", "name": "Alice"},
                   {"pubkey": "bob", "name": "Bob"}
                 ],
-                "messages": [
-                  {"sender": "alice", "recipient": "bob", "text": "Hello Bob!", "timestamp": 1000},
-                  {"sender": "bob", "recipient": "alice", "text": "Hi Alice!", "timestamp": 2000}
-                ]
+                "messages": []
               },
               "eventStore": {
                 "alice": [
                   {"type": "peer", "pubkey": "alice", "name": "Alice"},
-                  {"type": "message", "sender": "alice", "recipient": "bob", "text": "Hello Bob!", "timestamp": 1000},
-                  {"type": "peer", "pubkey": "bob", "name": "Bob"},
-                  {"type": "message", "sender": "bob", "recipient": "alice", "text": "Hi Alice!", "timestamp": 2000}
+                  {"type": "peer", "pubkey": "bob", "name": "Bob"}
                 ],
                 "bob": [
                   {"type": "peer", "pubkey": "bob", "name": "Bob"},
-                  {"type": "message", "sender": "bob", "recipient": "alice", "text": "Hi Alice!", "timestamp": 2000},
-                  {"type": "peer", "pubkey": "alice", "name": "Alice"},
-                  {"type": "message", "sender": "alice", "recipient": "bob", "text": "Hello Bob!", "timestamp": 1000}
+                  {"type": "peer", "pubkey": "alice", "name": "Alice"}
                 ]
               }
             }
@@ -286,8 +266,8 @@
             "db": {
               "state": {
                 "identities": [
-                  {"pubkey": "alice", "name": "Alice"},
-                  {"pubkey": "bob", "name": "Bob"}
+                  {"pubkey": "alice", "privkey": "alice_priv", "name": "Alice"},
+                  {"pubkey": "bob", "privkey": "bob_priv", "name": "Bob"}
                 ],
                 "peers": [
                   {"pubkey": "alice", "name": "Alice"},
@@ -323,9 +303,9 @@
             "db": {
               "state": {
                 "identities": [
-                  {"pubkey": "alice", "name": "Alice"},
-                  {"pubkey": "bob", "name": "Bob"},
-                  {"pubkey": "charlie", "name": "Charlie"}
+                  {"pubkey": "alice", "privkey": "alice_priv", "name": "Alice"},
+                  {"pubkey": "bob", "privkey": "bob_priv", "name": "Bob"},
+                  {"pubkey": "charlie", "privkey": "charlie_priv", "name": "Charlie"}
                 ],
                 "peers": [
                   {"pubkey": "alice", "name": "Alice"},

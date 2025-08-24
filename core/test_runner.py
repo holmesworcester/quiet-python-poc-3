@@ -149,7 +149,7 @@ class TestRunner:
                     db["incoming"] = []
                 db["incoming"].extend(incoming_queue)
             time_now_ms = scenario.get('time_now_ms')
-            tick(db, time_now_ms=time_now_ms, current_identity=current_identity)
+            tick(db, time_now_ms=time_now_ms)
             
             # Build result for comparison
             result = {"db": db}
@@ -224,13 +224,11 @@ class TestRunner:
             
             # Call handle directly with the envelope
             from core.handle import handle
-            current_identity = given.get("current_identity", "test-user")
             self.log(f"Calling handle with envelope: {envelope}")
             import json
             self.log(f"Initial db state: {json.dumps(db, indent=2)}")
-            self.log(f"Current identity: {current_identity}")
             
-            result_db = handle(db, envelope, time_now_ms=1000, current_identity=current_identity)
+            result_db = handle(db, envelope, time_now_ms=1000)
             
             self.log(f"Result db after handle: {json.dumps(result_db, indent=2)}")
             
@@ -271,6 +269,36 @@ class TestRunner:
                 for key, value in given["env"].items():
                     os.environ[key] = value
             
+            # Handle setup field for test data generation
+            if "setup" in given and given["setup"].get("type") == "generate_encrypted_blob":
+                setup = given["setup"]
+                # Import the helper function from process_incoming
+                import importlib.util
+                import sys
+                protocol_path = handler_file.split('/handlers/')[0]
+                module_path = os.path.join(protocol_path, "handlers/incoming/process_incoming.py")
+                spec = importlib.util.spec_from_file_location("process_incoming", module_path)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                
+                # Generate the encrypted blob
+                encrypted_blob = module.create_encrypted_blob(
+                    setup["inner_data"],
+                    setup["inner_key"],
+                    setup["outer_key"]
+                )
+                
+                # Add to incoming queue
+                if "db" not in given:
+                    given["db"] = {}
+                if "incoming" not in given["db"]:
+                    given["db"]["incoming"] = []
+                given["db"]["incoming"].append({
+                    "data": encrypted_blob,
+                    "origin": "test_setup",
+                    "received_at": given["params"].get("time_now_ms", 1000)
+                })
+            
             # Execute command
             # Extract handler name from file path
             if not handler_name:
@@ -294,11 +322,22 @@ class TestRunner:
             
             db = given.get("db", {})
             identity = given.get("identity", "test-user")
-            result = self.execute_command(cmd, identity, db)
-            
-            # Apply the command's db changes if any
-            if "db" in result:
-                db = result["db"]
+            try:
+                result = self.execute_command(cmd, identity, db)
+                
+                # Apply the command's db changes if any
+                if "db" in result:
+                    db = result["db"]
+            except Exception as e:
+                self.log(f"Command execution failed: {str(e)}", "ERROR")
+                # For crypto-related failures, add more context
+                if "decrypt" in str(e).lower() or "crypto" in str(e).lower():
+                    self.log("Note: Real crypto tests require proper encryption/decryption. Check that:", "ERROR")
+                    self.log("  - PyNaCl is installed (pip install pynacl)", "ERROR")
+                    self.log("  - Keys are properly formatted (64 hex chars for 32-byte keys)", "ERROR")
+                    self.log("  - Wire format matches expectations (hash:64, nonce:48, ciphertext:remaining)", "ERROR")
+                    self.log(f"  - Current CRYPTO_MODE: {os.environ.get('CRYPTO_MODE', 'dummy')}", "ERROR")
+                raise
             
             # Run ticks if specified
             ticks = test.get("ticks", 0)
@@ -456,6 +495,7 @@ class TestRunner:
         
         # Set test mode for better logging
         os.environ["TEST_MODE"] = "1"
+        os.environ["DEBUG_CRYPTO"] = "1"  # Enable crypto debugging by default
         
         # Set handler path for this protocol
         handlers_path = os.path.join(protocol_path, "handlers")
@@ -480,9 +520,11 @@ class TestRunner:
                 
                 # Check each handler
                 for root, dirs, files in os.walk(handlers_path):
-                    if 'handler.json' in files:
-                        handler_path = os.path.join(root, 'handler.json')
-                        handler_name = os.path.basename(os.path.dirname(handler_path))
+                    # Look for {folder}_handler.json pattern
+                    handler_name = os.path.basename(root)
+                    handler_json_name = f"{handler_name}_handler.json"
+                    if handler_json_name in files:
+                        handler_path = os.path.join(root, handler_json_name)
                         
                         errors, warnings = validator.validate_handler(handler_path)
                         if errors or warnings:
@@ -606,7 +648,8 @@ class TestRunner:
             for handler_dir in os.listdir(handlers_path):
                 handler_path = os.path.join(handlers_path, handler_dir)
                 if os.path.isdir(handler_path):
-                    handler_json_path = os.path.join(handler_path, "handler.json")
+                    # Look for {folder}_handler.json pattern
+                    handler_json_path = os.path.join(handler_path, f"{handler_dir}_handler.json")
                     if os.path.exists(handler_json_path):
                         try:
                             with open(handler_json_path, 'r') as f:

@@ -13,10 +13,16 @@ def execute(input_data, identity, db):
     # Get messages from state
     messages = db.get('state', {}).get('messages', [])
     
-    # Filter messages for this peer (sent by or to this peer)
+    # Filter messages received by this peer
+    # Also exclude messages marked as unknown_peer
     peer_messages = []
     for msg in messages:
-        if msg.get('sender') == peer_pubkey or msg.get('recipient') == peer_pubkey:
+        # Skip messages from unknown peers
+        if msg.get('unknown_peer'):
+            continue
+            
+        # Only show messages received by this peer
+        if msg.get('received_by') == peer_pubkey:
             peer_messages.append({
                 "text": msg.get('text'),
                 "sender": msg.get('sender'),
