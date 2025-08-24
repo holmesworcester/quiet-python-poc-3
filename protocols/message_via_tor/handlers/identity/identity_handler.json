@@ -50,12 +50,14 @@
           "given": {"db": {}, "params": {"name": "Bob"}},
           "then": {
             "return": {
-              "return": "Identity created",
+              "api_response": {
+                "return": "Identity created",
+                "identity": {"pubkey": "*", "name": "Bob"}
+              },
               "newEvents": [
                 {"type": "identity", "pubkey": "*", "privkey": "*", "name": "Bob"},
                 {"type": "peer", "pubkey": "*", "name": "Bob"}
-              ],
-              "identity": {"pubkey": "*", "name": "Bob"}
+              ]
             }
           }
         }
@@ -79,11 +81,13 @@
           },
           "then": {
             "return": {
-              "return": "Found 2 identities",
-              "identities": [
-                {"pubkey": "pub1", "name": "Alice"},
-                {"pubkey": "pub2", "name": "Bob"}
-              ]
+              "api_response": {
+                "return": "Found 2 identities",
+                "identities": [
+                  {"pubkey": "pub1", "name": "Alice"},
+                  {"pubkey": "pub2", "name": "Bob"}
+                ]
+              }
             }
           }
         }
@@ -95,14 +99,23 @@
       "tests": [
         {
           "given": {
-            "db": {},
-            "params": {"pubkey": "pub123", "name": "Alice"}
+            "db": {
+              "state": {
+                "identities": [
+                  {"pubkey": "pub123", "privkey": "priv123", "name": "Alice"}
+                ]
+              }
+            },
+            "params": {},
+            "identity": "pub123"
           },
           "then": {
             "return": {
-              "return": "Invite link created",
-              "invite_link": "*",
-              "invite_data": {"peer": "pub123", "name": "Alice"}
+              "api_response": {
+                "return": "Invite link created",
+                "inviteLink": "*",
+                "inviteData": {"peer": "pub123", "name": "Alice"}
+              }
             }
           }
         }
@@ -116,16 +129,59 @@
           "given": {
             "db": {},
             "params": {
-              "invite_link": "message-via-tor://invite/eyJuYW1lIjoiQWxpY2UiLCJwZWVyIjoicHViMTIzIn0="
+              "inviteLink": "message-via-tor://invite/eyJuYW1lIjoiQWxpY2UiLCJwZWVyIjoicHViMTIzIn0=",
+              "name": "Charlie"
             }
           },
           "then": {
             "return": {
-              "return": "Joined network via invite",
+              "api_response": {
+                "return": "Joined network via invite",
+                "identity": {
+                  "pubkey": "*",
+                  "name": "Charlie"
+                },
+                "peer": {"pubkey": "pub123", "name": "Alice"}
+              },
               "newEvents": [
-                {"type": "peer", "pubkey": "pub123", "name": "Alice", "joined_via": "invite"}
-              ],
-              "peer": {"pubkey": "pub123", "name": "Alice"}
+                {"type": "identity", "pubkey": "*", "privkey": "*", "name": "Charlie"},
+                {"type": "peer", "pubkey": "*", "name": "Charlie"},
+                {"type": "peer", "pubkey": "pub123", "name": "Alice", "joined_via": "invite", "received_by": "*"}
+              ]
+            }
+          }
+        },
+        {
+          "description": "Join creates identity in state after projecting events",
+          "given": {
+            "db": {},
+            "params": {
+              "inviteLink": "message-via-tor://invite/eyJuYW1lIjoiQm9iIiwicGVlciI6InB1YjQ1NiJ9",
+              "name": "Alice"
+            }
+          },
+          "ticks": 1,
+          "then": {
+            "return": {
+              "api_response": {
+                "return": "Joined network via invite",
+                "identity": {
+                  "pubkey": "*",
+                  "name": "Alice"
+                },
+                "peer": {"pubkey": "pub456", "name": "Bob"}
+              }
+            },
+            "db": {
+              "state": {
+                "identities": [
+                  {"pubkey": "*", "privkey": "*", "name": "Alice"}
+                ],
+                "peers": [
+                  {"pubkey": "*", "name": "Alice", "joined_via": "direct", "added_at": "*", "received_by": "*"},
+                  {"pubkey": "pub456", "name": "Bob", "joined_via": "invite", "added_at": "*", "received_by": "*"}
+                ]
+              }
             }
           }
         }

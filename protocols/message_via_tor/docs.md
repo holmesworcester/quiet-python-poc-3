@@ -24,6 +24,15 @@ Like Slack (or Tor) a client can have multiple identities, so we can easily test
 - `projector` (checks has pubkey matching known `peer`, has text, has time, else does nothing or see note.)
 - `list` (given a `peer` public key, returns all messages known to that peer with their handles and timestamps, as json, called by API e.g.)
 
+**Important Note on Message Ownership**: The `received_by` field is how we track which messages belong to which identity. Each message has:
+- `sender`: The pubkey of who sent the message (same for all copies)
+- `received_by`: The pubkey of the identity that owns this copy of the message
+
+When listing messages for an identity, we ONLY show messages where `received_by` matches that identity's pubkey. This ensures:
+- Each identity sees only their own copy of messages they sent
+- Each identity sees messages they received from others
+- Identities don't see copies of messages sent between other peers
+
 Note: a message might arrive before the `peer` event, so it will not have a pubkey matching a known peer. To address these cases, the message projector should mark the messagee as `unknown-peer`, and the API should not show these messages. Then, whenever a `peer` arrives that matches the pubkey of an `unknown-peer` message, the peer projector should remove the `unknown-peer` flag. Another way to do this would be to have the message handler register a listener on new projected peers, check if they match an `unknown-peer` message, and modify the message.   
 
 `sync-peers` has:

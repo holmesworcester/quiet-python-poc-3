@@ -1,58 +1,23 @@
 # Type Safety in Event-Driven Systems
 
-This document describes how to extract type information from handler schemas and use it to create type-safe interfaces in Python, Rust, and TypeScript.
-
-## Overview
-
-Our event-driven system uses JSON schemas to define the structure of events and commands. By extracting type information from these schemas, we can:
-
-1. Generate type definitions in multiple languages
-2. Provide compile-time type checking
-3. Enable better IDE support with autocomplete
-4. Catch type mismatches early
-5. Maintain consistency across language boundaries
+Our event-driven system uses JSON schemas to define the structure of events and commands. By extracting type information from these schemas, we can generate type definitions in multiple languages and reap the benefits. This document describes how to extract type information from handler schemas and use it to create type-safe interfaces in Python, Rust, and TypeScript.
 
 ## Schema Structure
 
-Handler schemas are defined in `handler.json` files with the following structure:
+Handler schemas are defined in `handler.json` files.
 
-```json
-{
-  "eventTypes": ["message"],
-  "schema": {
-    "type": "object",
-    "properties": {
-      "type": { "const": "message" },
-      "sender": { "type": "string" },
-      "text": { "type": "string", "minLength": 1 },
-      "timestamp": { "type": "string" },
-      "replyTo": { "type": "string" }
-    },
-    "required": ["type", "sender", "text", "timestamp"]
-  },
-  "commands": {
-    "create": {
-      "input": {
-        "type": "object",
-        "properties": {
-          "text": { "type": "string", "minLength": 1 },
-          "replyTo": { "type": "string" }
-        },
-        "required": ["text"]
-      },
-      "output": {
-        "type": "object",
-        "properties": {
-          "newlyCreatedEvents": {
-            "type": "array",
-            "items": { "$ref": "./schema.json" }
-          }
-        }
-      }
-    }
-  }
-}
-```
+## Checking the API
+
+An LLM can generate an API for us, but it's helpful to clamp it to the types in the actual commands, and have this be enforced by the IDE or our test_runner. Spefically, we should ensure that the types in the api spec match the types of params and api_response in the commands that correspond to the operation id in the API.
+
+Possible flow:
+
+- Use Pydantic models to validate API responses against OpenAPI YAML spec
+- Create type-safe wrapper for execute_api that validates responses at runtime
+- Add mypy static type checking to catch type errors at development time
+- Generate API spec from handler command schemas that include api_response field
+- Ensure test_runner validates that actual API responses match expected schemas
+- Support compile-time type safety for better IDE support and early error detection 
 
 ## Python Implementation
 

@@ -15,6 +15,8 @@ def execute(input_data, identity, db):
     ]
     
     return {
-        "return": f"Found {len(identity_list)} identities",
-        "identities": identity_list
+        "api_response": {
+            "return": f"Found {len(identity_list)} identities",
+            "identities": identity_list
+        }
     }

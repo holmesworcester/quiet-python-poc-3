@@ -99,9 +99,12 @@ def format_response(result, method, status_code=200):
         }
     }
     
-    # Extract data from result
-    if isinstance(result, dict):
-        # Remove internal fields
+    # Check if handler uses new api_response convention
+    if isinstance(result, dict) and 'api_response' in result:
+        # Use the explicit api_response
+        response["body"] = result['api_response']
+    elif isinstance(result, dict):
+        # Legacy format - remove internal fields
         body = {k: v for k, v in result.items() 
                 if k not in ['db', 'newEvents', 'newlyCreatedEvents']}
         
@@ -288,7 +291,12 @@ def execute_api(protocol_name, method, path, data=None, params=None, identity=No
             }
         
         # Execute command
-        db, result = run_command(handler_name, command_name, input_data, identity, db)
+        # For endpoints with identityId in path, use that as the identity
+        identity_to_use = identity
+        if path_params and 'identityId' in path_params:
+            identity_to_use = path_params['identityId']
+        
+        db, result = run_command(handler_name, command_name, input_data, identity_to_use, db)
         
         # Format response and include updated db for persistence
         status_code = 201 if method.upper() == "POST" else 200

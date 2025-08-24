@@ -194,15 +194,17 @@
         {
           "given": {
             "db": {},
-            "params": {"pubkey": "peer456", "name": "Bob"}
+            "params": {"publicKey": "peer456", "name": "Bob"}
           },
           "then": {
             "return": {
-              "return": "Peer created",
+              "api_response": {
+                "return": "Peer created",
+                "peer": {"pubkey": "peer456", "name": "Bob"}
+              },
               "newEvents": [
                 {"type": "peer", "pubkey": "peer456", "name": "Bob"}
-              ],
-              "peer": {"pubkey": "peer456", "name": "Bob"}
+              ]
             }
           }
         }

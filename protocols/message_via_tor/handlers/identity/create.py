@@ -27,10 +27,12 @@ def execute(input_data, identity, db):
     }
     
     return {
-        "return": "Identity created",
-        "newEvents": [identity_event, peer_event],
-        "identity": {
-            "pubkey": pubkey,
-            "name": input_data.get("name", identity)
-        }
+        "api_response": {
+            "return": "Identity created",
+            "identity": {
+                "pubkey": pubkey,
+                "name": input_data.get("name", identity)
+            }
+        },
+        "newEvents": [identity_event, peer_event]
     }

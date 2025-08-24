@@ -6,26 +6,29 @@ def execute(input_data, identity, db):
     """
     Returns an invite-link containing this peer, for sharing out-of-band
     """
-    # Get the identity's public key
-    pubkey = input_data.get("pubkey")
-    if not pubkey:
-        # Try to find it in identities
-        identities = db.get('state', {}).get('identities', [])
-        for id_data in identities:
-            if id_data.get('name') == identity:
-                pubkey = id_data.get('pubkey')
-                break
+    # The identity parameter should be the pubkey/ID from the URL path
+    # Find the full identity data
+    identities = db.get('state', {}).get('identities', [])
+    identity_data = None
     
-    if not pubkey:
+    for id_data in identities:
+        if id_data.get('pubkey') == identity:
+            identity_data = id_data
+            break
+    
+    if not identity_data:
         return {
-            "return": "Error: No pubkey found for identity",
-            "error": "Missing pubkey"
+            "api_response": {
+                "return": "Error: Identity not found",
+                "error": f"No identity found with pubkey {identity}"
+            },
+            "internal": {}
         }
     
-    # Create invite data
+    # Create invite data with peer info
     invite_data = {
-        "peer": pubkey,
-        "name": input_data.get("name", identity)
+        "peer": identity_data['pubkey'],
+        "name": identity_data.get('name', 'Unknown')
     }
     
     # Encode as base64 for easy sharing
@@ -33,7 +36,9 @@ def execute(input_data, identity, db):
     invite_link = f"message-via-tor://invite/{base64.urlsafe_b64encode(invite_json.encode()).decode()}"
     
     return {
-        "return": "Invite link created",
-        "invite_link": invite_link,
-        "invite_data": invite_data
+        "api_response": {
+            "return": "Invite link created",
+            "inviteLink": invite_link,  # Use camelCase for API consistency
+            "inviteData": invite_data
+        }
     }

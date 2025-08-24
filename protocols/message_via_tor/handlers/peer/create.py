@@ -2,13 +2,16 @@ def execute(input_data, identity, db):
     """
     Creates and returns a new peer event
     """
-    pubkey = input_data.get("pubkey")
+    # API expects publicKey, but we use pubkey internally
+    pubkey = input_data.get("publicKey") or input_data.get("pubkey")
     name = input_data.get("name", pubkey[:8] if pubkey else "Unknown")
     
     if not pubkey:
         return {
-            "return": "Error: No pubkey provided",
-            "error": "Missing pubkey"
+            "api_response": {
+                "return": "Error: No pubkey provided",
+                "error": "Missing pubkey"
+            }
         }
     
     # Create peer event
@@ -19,10 +22,12 @@ def execute(input_data, identity, db):
     }
     
     return {
-        "return": "Peer created",
-        "newEvents": [peer_event],
-        "peer": {
-            "pubkey": pubkey,
-            "name": name
-        }
+        "api_response": {
+            "return": "Peer created",
+            "peer": {
+                "pubkey": pubkey,
+                "name": name
+            }
+        },
+        "newEvents": [peer_event]
     }
