@@ -18,13 +18,13 @@ from core.handle import handle
 logger = logging.getLogger(__name__)
 
 # Infrastructure paths that commands can modify directly
-INFRASTRUCTURE_PATHS = ['state.outgoing', 'incoming']
+INFRASTRUCTURE_PATHS = ['state.outgoing', 'incoming', 'eventStore']
 
 
 def is_infrastructure_update(key, value, db):
     """Validate if an update is to infrastructure state"""
     # Direct infrastructure paths
-    if key in ['incoming']:
+    if key in ['incoming', 'eventStore']:
         return True
     
     # Check state updates
@@ -54,6 +54,17 @@ def run_command(handler_name, command_name, input_data, db=None, time_now_ms=Non
     - Tick to run periodic jobs
     - Tests to execute test scenarios
     """
+    # If db supports retry, use it
+    if hasattr(db, 'with_retry'):
+        return db.with_retry(lambda: _run_command_with_tx(
+            handler_name, command_name, input_data, db, time_now_ms
+        ))
+    else:
+        return _run_command_with_tx(handler_name, command_name, input_data, db, time_now_ms)
+
+
+def _run_command_with_tx(handler_name, command_name, input_data, db, time_now_ms):
+    """Internal function that runs command with transaction"""
     # Get handler base path
     handler_base = os.environ.get("HANDLER_PATH", "handlers")
     

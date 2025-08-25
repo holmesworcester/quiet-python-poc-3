@@ -17,7 +17,7 @@ from rich.console import Console
 from rich.table import Table
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical
-from textual.widgets import Footer, Header, Input, Static
+from textual.widgets import Footer, Header, Input, Static, RichLog
 from textual.reactive import reactive
 from textual import events
 
@@ -52,7 +52,7 @@ class WindowWidget(Static):
         self.state = state
         self.api_client = api_client
         self.input = Input(placeholder=f"Enter command or press / for help")
-        self.output = Static("", classes="output")
+        self.output = RichLog(highlight=True, markup=True)
         
     def compose(self) -> ComposeResult:
         with Vertical():
@@ -118,7 +118,7 @@ class WindowWidget(Static):
         if cmd == "help":
             self.show_help()
         elif cmd == "clear":
-            self.output.update("")
+            self.output.clear()
             self.state.output_buffer.clear()
         elif cmd == "history":
             for cmd in self.state.command_history[-10:]:
@@ -146,6 +146,8 @@ class WindowWidget(Static):
                     self.add_output(f"{name}: {value}")
         elif cmd == "api":
             await self.handle_api_command(args)
+        elif cmd == "echo":
+            self.add_output(args)
         else:
             self.add_output(f"Unknown command: /{cmd}")
             
@@ -168,8 +170,7 @@ class WindowWidget(Static):
             
     def show_help(self):
         """Show help for this window"""
-        help_text = """
-Window Commands:
+        help_text = """[bold]Window Commands:[/bold]
   /help              - Show this help
   /clear             - Clear window output
   /history           - Show command history
@@ -178,18 +179,28 @@ Window Commands:
   /define <var> <val> - Define a variable
   /api <METHOD> <path> [data] - Make API call
   
-Variable substitution: {varname}
-Alias arguments: {1}, {2}, {*} (all args)
+[bold]Variable substitution:[/bold] {varname}
+[bold]Alias arguments:[/bold] {1}, {2}, {*} (all args)
 """
         self.add_output(help_text)
+        
+        # Show existing aliases if any
+        if self.state.aliases:
+            self.add_output("\n[bold]Current Aliases:[/bold]")
+            for name, cmd in self.state.aliases.items():
+                self.add_output(f"  {name}: {cmd}")
+        
+        # Show existing variables if any
+        if self.state.variables:
+            self.add_output("\n[bold]Current Variables:[/bold]")
+            for name, value in self.state.variables.items():
+                self.add_output(f"  {name} = {value}")
         
     def add_output(self, text: str):
         """Add text to output buffer and display"""
         self.state.output_buffer.append(text)
-        # Keep last 100 lines
-        if len(self.state.output_buffer) > 100:
-            self.state.output_buffer = self.state.output_buffer[-100:]
-        self.output.update("\n".join(self.state.output_buffer))
+        # RichLog automatically handles scrolling
+        self.output.write(text)
 
 
 class APIClient:
@@ -200,7 +211,7 @@ class APIClient:
         
     async def request(self, method: str, path: str, data: Optional[str] = None) -> Any:
         """Make an API request using api.py CLI"""
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         cmd = [sys.executable, "-m", "core.api", self.protocol_path, method, path]
         
         # Parse data if provided
@@ -416,6 +427,9 @@ class CLIExecutor:
                 
         elif cmd == "api":
             return await self.handle_api_command(args)
+        
+        elif cmd == "echo":
+            return args
             
         else:
             return f"Unknown command: /{cmd}"
@@ -431,7 +445,7 @@ class CLIExecutor:
         data = parts[2] if len(parts) > 2 else None
         
         # Build command - run from project root
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         cmd = [sys.executable, "-m", "core.api", self.protocol_path, method, path]
         
         # Parse and add data if provided

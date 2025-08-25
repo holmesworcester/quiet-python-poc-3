@@ -30,10 +30,13 @@
             },
             "eventStore": [
               {
-                "type": "identity",
-                "pubkey": "pub123",
-                "privkey": "priv123",
-                "name": "Alice"
+                "data": {
+                  "type": "identity",
+                  "pubkey": "pub123",
+                  "privkey": "priv123",
+                  "name": "Alice"
+                },
+                "metadata": {}
               }
             ]
           }

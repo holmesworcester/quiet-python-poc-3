@@ -23,7 +23,7 @@ def execute(input_data, db):
             envelope['metadata']['eventId'] = str(uuid.uuid4())
             envelope['metadata']['timestamp'] = envelope['metadata'].get('timestamp', current_time)
         
-        # Handle the envelope
-        db = handle(db, envelope, input_data.get("time_now_ms"))
+        # Handle the envelope (auto_transaction=False since we're already in a command transaction)
+        db = handle(db, envelope, input_data.get("time_now_ms"), auto_transaction=False)
     
     return {"db": db}

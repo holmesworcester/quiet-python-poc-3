@@ -68,23 +68,29 @@ windows:
       clear: "/clear"
     default_command: "mine"
 
-# Example usage:
-# 1. In Identity window:
-#    - "create alice" - Creates identity named alice
-#    - "create bob" - Creates identity named bob
-#    - "use alice" - Sets current user to alice
+# Example usage for complete demo flow:
+# 
+# 1. Create identities (Identity window):
+#    create alice
+#    create bob
+#    list
 #
-# 2. In Peers window:
-#    - "use alice" - Set current user
-#    - "invite" - Generate invite code
-#    - "use bob" - Switch to bob
-#    - "join <invite_code>" - Join using invite
+# 2. Set up peer connection (Peers window):
+#    use alice
+#    invite
+#    # Copy the invite code from response
+#    use bob  
+#    join <invite_code>
+#    peers
 #
-# 3. In Messages window:
-#    - "use alice" - Set current user
-#    - "Hello everyone!" - Broadcast message to all peers
-#    - "list" - Show messages
+# 3. Send messages (Messages window):
+#    use alice
+#    Hello from Alice!
+#    use bob
+#    Hi back from Bob!
 #
-# 4. In Events window:
-#    - "use alice" - Set current user
-#    - Events auto-refresh to show activity
+# 4. View messages (Messages window):
+#    /api GET /messages/alice
+#    /api GET /messages/bob
+#
+# Note: The 'user' variable is window-specific, so you need to set it in each window

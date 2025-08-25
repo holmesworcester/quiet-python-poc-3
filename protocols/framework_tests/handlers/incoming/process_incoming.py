@@ -27,8 +27,8 @@ def execute(input_data, db):
         if os.environ.get("TEST_MODE"):
             print(f"[process_incoming] Blob {i+1} decrypted successfully, handling envelope")
         
-        # Handle the envelope
-        db = handle(db, envelope, input_data.get("time_now_ms"))
+        # Handle the envelope (auto_transaction=False since we're already in a command transaction)
+        db = handle(db, envelope, input_data.get("time_now_ms"), auto_transaction=False)
     
     return {"db": db}
 

@@ -14,7 +14,9 @@
           "eventStore": [],
           "state": {
             "messages": [],
-            "known_senders": ["pubkey1"],
+            "known_senders": [
+              "pubkey1"
+            ],
             "key_map": {
               "outerKey12345678901234567890123456789012345678901234567890123456": "decrypt_key"
             }
@@ -24,8 +26,24 @@
       "then": {
         "db": {
           "incoming": [],
-          "eventStore": [{"type": "message", "text": "Hello", "sender": "pubkey1"}],
-          "state": {"messages": [{"text": "Hello", "sender": "pubkey1"}]}
+          "eventStore": [
+            {
+              "data": {
+                "type": "message",
+                "text": "Hello",
+                "sender": "pubkey1"
+              },
+              "metadata": {}
+            }
+          ],
+          "state": {
+            "messages": [
+              {
+                "text": "Hello",
+                "sender": "pubkey1"
+              }
+            ]
+          }
         }
       },
       "description": "Processes incoming blob through greedy_decrypt and projects if valid"
@@ -96,7 +114,10 @@
           "state": {
             "unknown_events": [
               {
-                "data": {"type": "unknowntype", "text": "Nested"},
+                "data": {
+                  "type": "unknowntype",
+                  "text": "Nested"
+                },
                 "metadata": {
                   "outerKeyHash": "outerKey12345678901234567890123456789012345678901234567890123456",
                   "innerKeyHash": "innerKey123",

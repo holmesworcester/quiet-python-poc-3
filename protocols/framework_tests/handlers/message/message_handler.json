@@ -2,7 +2,9 @@
   "schema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
-    "required": ["type"],
+    "required": [
+      "type"
+    ],
     "properties": {
       "type": {
         "type": "string",
@@ -31,21 +33,73 @@
       {
         "description": "Valid sender's message is projected to state",
         "given": {
-          "db": {"eventStore": [], "state": {"known_senders": ["pubkey1"]}},
-          "newEvent": {"type": "message", "sender": "pubkey1", "text": "Hello"}
+          "db": {
+            "eventStore": [],
+            "state": {
+              "known_senders": [
+                "pubkey1"
+              ]
+            }
+          },
+          "newEvent": {
+            "type": "message",
+            "sender": "pubkey1",
+            "text": "Hello"
+          }
         },
         "then": {
-          "db": {"eventStore": [{"type": "message", "text": "Hello", "sender": "pubkey1"}], "state": {"messages": [{"text": "Hello", "*": "*"}]}}
+          "db": {
+            "eventStore": [
+              {
+                "data": {
+                  "type": "message",
+                  "text": "Hello",
+                  "sender": "pubkey1"
+                },
+                "metadata": {}
+              }
+            ],
+            "state": {
+              "messages": [
+                {
+                  "text": "Hello",
+                  "*": "*"
+                }
+              ]
+            }
+          }
         }
       },
       {
         "description": "Unknown sender's message is stored but not projected",
         "given": {
-          "db": {"state": {"known_senders": []}},
-          "newEvent": {"type": "message", "sender": "unknown", "text": "Invalid"}
+          "db": {
+            "state": {
+              "known_senders": []
+            }
+          },
+          "newEvent": {
+            "type": "message",
+            "sender": "unknown",
+            "text": "Invalid"
+          }
         },
         "then": {
-          "db": {"eventStore": [{"type": "message", "text": "Invalid", "sender": "unknown"}], "state": {"messages": []}}
+          "db": {
+            "eventStore": [
+              {
+                "data": {
+                  "type": "message",
+                  "text": "Invalid",
+                  "sender": "unknown"
+                },
+                "metadata": {}
+              }
+            ],
+            "state": {
+              "messages": []
+            }
+          }
         }
       }
     ]
@@ -55,7 +109,9 @@
       "input": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "type": "object",
-        "required": ["text"],
+        "required": [
+          "text"
+        ],
         "properties": {
           "text": {
             "type": "string",
@@ -75,7 +131,11 @@
       "output": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "type": "object",
-        "required": ["return", "new_events", "newlyCreatedEvents"],
+        "required": [
+          "return",
+          "new_events",
+          "newlyCreatedEvents"
+        ],
         "properties": {
           "return": {
             "type": "string",
@@ -86,7 +146,10 @@
             "minItems": 1,
             "items": {
               "type": "object",
-              "required": ["type", "text"],
+              "required": [
+                "type",
+                "text"
+              ],
               "properties": {
                 "type": {
                   "const": "message"
@@ -102,11 +165,17 @@
             "minItems": 1,
             "items": {
               "type": "object",
-              "required": ["envelope", "data"],
+              "required": [
+                "envelope",
+                "data"
+              ],
               "properties": {
                 "envelope": {
                   "type": "string",
-                  "enum": ["plaintext", "encrypted"]
+                  "enum": [
+                    "plaintext",
+                    "encrypted"
+                  ]
                 },
                 "data": {
                   "type": "object"
@@ -127,8 +196,24 @@
       "tests": [
         {
           "description": "Create command returns new message event",
-          "given": {"db": {}, "params": {"text": "Hello"}},
-          "then": {"return": {"return": "Created", "new_events": [{"type": "message", "text": "Hello", "sender": "*"}]}}
+          "given": {
+            "db": {},
+            "params": {
+              "text": "Hello"
+            }
+          },
+          "then": {
+            "return": {
+              "return": "Created",
+              "new_events": [
+                {
+                  "type": "message",
+                  "text": "Hello",
+                  "sender": "*"
+                }
+              ]
+            }
+          }
         }
       ]
     }

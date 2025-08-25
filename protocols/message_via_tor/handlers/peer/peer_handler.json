@@ -6,14 +6,26 @@
     "tests": [
       {
         "given": {
-          "db": {"state": {"identities": [{"pubkey": "test_identity", "privkey": "test_privkey", "name": "Test Identity"}]}},
+          "db": {
+            "state": {
+              "identities": [
+                {
+                  "pubkey": "test_identity",
+                  "privkey": "test_privkey",
+                  "name": "Test Identity"
+                }
+              ]
+            }
+          },
           "envelope": {
             "data": {
               "type": "peer",
               "pubkey": "peer123",
               "name": "Alice"
             },
-            "metadata": {"received_by": "test_identity"}
+            "metadata": {
+              "received_by": "test_identity"
+            }
           }
         },
         "then": {
@@ -31,9 +43,14 @@
             },
             "eventStore": [
               {
-                "type": "peer",
-                "pubkey": "peer123",
-                "name": "Alice"
+                "data": {
+                  "type": "peer",
+                  "pubkey": "peer123",
+                  "name": "Alice"
+                },
+                "metadata": {
+                  "received_by": "test_identity"
+                }
               }
             ]
           }
@@ -41,7 +58,9 @@
       },
       {
         "given": {
-          "db": {"state": {}},
+          "db": {
+            "state": {}
+          },
           "envelope": {
             "data": {
               "type": "peer",
@@ -86,7 +105,9 @@
               "pubkey": "new_peer",
               "name": "New Peer"
             },
-            "metadata": {"received_by": "test_identity"}
+            "metadata": {
+              "received_by": "test_identity"
+            }
           }
         },
         "then": {
@@ -126,8 +147,16 @@
           "db": {
             "state": {
               "identities": [
-                {"pubkey": "alice_pubkey", "privkey": "alice_privkey", "name": "Alice"},
-                {"pubkey": "bob_pubkey", "privkey": "bob_privkey", "name": "Bob"}
+                {
+                  "pubkey": "alice_pubkey",
+                  "privkey": "alice_privkey",
+                  "name": "Alice"
+                },
+                {
+                  "pubkey": "bob_pubkey",
+                  "privkey": "bob_privkey",
+                  "name": "Bob"
+                }
               ],
               "peers": []
             }
@@ -138,7 +167,9 @@
               "pubkey": "bob_pubkey",
               "name": "Bob"
             },
-            "metadata": {"selfGenerated": true}
+            "metadata": {
+              "selfGenerated": true
+            }
           }
         },
         "then": {
@@ -187,7 +218,9 @@
               "pubkey": "new_peer",
               "name": "New Peer"
             },
-            "metadata": {"received_by": "identity1"}
+            "metadata": {
+              "received_by": "identity1"
+            }
           }
         },
         "then": {
@@ -231,16 +264,26 @@
         {
           "given": {
             "db": {},
-            "params": {"publicKey": "peer456", "name": "Bob"}
+            "params": {
+              "publicKey": "peer456",
+              "name": "Bob"
+            }
           },
           "then": {
             "return": {
               "api_response": {
                 "return": "Peer created",
-                "peer": {"pubkey": "peer456", "name": "Bob"}
+                "peer": {
+                  "pubkey": "peer456",
+                  "name": "Bob"
+                }
               },
               "newEvents": [
-                {"type": "peer", "pubkey": "peer456", "name": "Bob"}
+                {
+                  "type": "peer",
+                  "pubkey": "peer456",
+                  "name": "Bob"
+                }
               ]
             }
           }

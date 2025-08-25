@@ -11,23 +11,39 @@
           "description": "Pre-decrypted envelope from tor_simulator passes through unchanged",
           "given": {
             "db": {
-              "incoming": [{
-                "envelope": true,
-                "data": { "type": "message", "text": "Test", "sender": "alice" },
-                "metadata": { "origin": "network", "receivedAt": 1000 }
-              }],
+              "incoming": [
+                {
+                  "envelope": true,
+                  "data": {
+                    "type": "message",
+                    "text": "Test",
+                    "sender": "alice"
+                  },
+                  "metadata": {
+                    "origin": "network",
+                    "receivedAt": 1000
+                  }
+                }
+              ],
               "state": {}
             },
-            "params": { "time_now_ms": 1000 }
+            "params": {
+              "time_now_ms": 1000
+            }
           },
           "then": {
             "db": {
               "incoming": [],
-              "eventStore": [{
-                "type": "message",
-                "text": "Test",
-                "sender": "alice"
-              }]
+              "eventStore": [
+                {
+                  "data": {
+                    "type": "message",
+                    "text": "Test",
+                    "sender": "alice"
+                  },
+                  "metadata": {}
+                }
+              ]
             }
           }
         },
@@ -38,25 +54,58 @@
               "incoming": [
                 {
                   "envelope": true,
-                  "data": { "type": "message", "text": "First", "sender": "alice" },
-                  "metadata": { "receivedAt": 1000 }
+                  "data": {
+                    "type": "message",
+                    "text": "First",
+                    "sender": "alice"
+                  },
+                  "metadata": {
+                    "receivedAt": 1000
+                  }
                 },
                 {
                   "envelope": true,
-                  "data": { "type": "message", "text": "Second", "sender": "bob" },
-                  "metadata": { "receivedAt": 2000 }
+                  "data": {
+                    "type": "message",
+                    "text": "Second",
+                    "sender": "bob"
+                  },
+                  "metadata": {
+                    "receivedAt": 2000
+                  }
                 }
               ],
-              "state": { "known_senders": ["alice", "bob"] }
+              "state": {
+                "known_senders": [
+                  "alice",
+                  "bob"
+                ]
+              }
             },
-            "params": { "time_now_ms": 3000 }
+            "params": {
+              "time_now_ms": 3000
+            }
           },
           "then": {
             "db": {
               "incoming": [],
               "eventStore": [
-                { "type": "message", "text": "First", "sender": "alice" },
-                { "type": "message", "text": "Second", "sender": "bob" }
+                {
+                  "data": {
+                    "type": "message",
+                    "text": "First",
+                    "sender": "alice"
+                  },
+                  "metadata": {}
+                },
+                {
+                  "data": {
+                    "type": "message",
+                    "text": "Second",
+                    "sender": "bob"
+                  },
+                  "metadata": {}
+                }
               ]
             }
           }

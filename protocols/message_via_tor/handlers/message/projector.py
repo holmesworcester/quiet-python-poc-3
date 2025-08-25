@@ -15,14 +15,7 @@ def project(db, envelope, time_now_ms):
     # Extract sender from data or metadata
     sender = data.get('sender') or metadata.get('sender')
     
-    # Store in eventStore as a list
-    if 'eventStore' not in db:
-        db['eventStore'] = []
-    
-    # Get eventStore, modify, and reassign to trigger persistence
-    event_store = db['eventStore']
-    event_store.append(data)
-    db['eventStore'] = event_store
+    # Initialize eventStore if needed (removed duplicate append)
     
     # Check if message has text
     text = data.get('text')

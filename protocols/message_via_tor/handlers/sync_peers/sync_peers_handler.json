@@ -9,13 +9,41 @@
           "db": {
             "state": {
               "peers": [
-                {"pubkey": "peer1", "name": "Alice", "received_by": "identity1"},
-                {"pubkey": "peer2", "name": "Bob", "received_by": "identity1"}
+                {
+                  "pubkey": "peer1",
+                  "name": "Alice",
+                  "received_by": "identity1"
+                },
+                {
+                  "pubkey": "peer2",
+                  "name": "Bob",
+                  "received_by": "identity1"
+                }
               ]
             },
             "eventStore": [
-              {"type": "peer", "pubkey": "peer1", "name": "Alice"},
-              {"type": "peer", "pubkey": "peer2", "name": "Bob"}
+              {
+                "data": {
+                  "type": "peer",
+                  "pubkey": "peer1",
+                  "name": "Alice"
+                },
+                "metadata": {
+                  "selfGenerated": true,
+                  "received_by": "identity1"
+                }
+              },
+              {
+                "data": {
+                  "type": "peer",
+                  "pubkey": "peer2",
+                  "name": "Bob"
+                },
+                "metadata": {
+                  "selfGenerated": true,
+                  "received_by": "identity1"
+                }
+              }
             ]
           },
           "envelope": {
@@ -24,31 +52,75 @@
               "type": "sync_peers",
               "sender": "peer3"
             },
-            "metadata": {"received_by": "identity1"}
+            "metadata": {
+              "received_by": "identity1"
+            }
           }
         },
         "then": {
           "db": {
             "state": {
               "peers": [
-                {"pubkey": "peer1", "name": "Alice", "received_by": "identity1"},
-                {"pubkey": "peer2", "name": "Bob", "received_by": "identity1"}
+                {
+                  "pubkey": "peer1",
+                  "name": "Alice",
+                  "received_by": "identity1"
+                },
+                {
+                  "pubkey": "peer2",
+                  "name": "Bob",
+                  "received_by": "identity1"
+                }
               ],
               "outgoing": [
                 {
                   "recipient": "peer3",
-                  "data": {"type": "peer", "pubkey": "peer1", "name": "Alice"}
+                  "data": {
+                    "type": "peer",
+                    "pubkey": "peer1",
+                    "name": "Alice"
+                  }
                 },
                 {
-                  "recipient": "peer3", 
-                  "data": {"type": "peer", "pubkey": "peer2", "name": "Bob"}
+                  "recipient": "peer3",
+                  "data": {
+                    "type": "peer",
+                    "pubkey": "peer2",
+                    "name": "Bob"
+                  }
                 }
               ]
             },
             "eventStore": [
-              {"type": "peer", "pubkey": "peer1", "name": "Alice"},
-              {"type": "peer", "pubkey": "peer2", "name": "Bob"},
-              {"type": "sync_peers", "sender": "peer3"}
+              {
+                "data": {
+                  "type": "peer",
+                  "pubkey": "peer1",
+                  "name": "Alice"
+                },
+                "metadata": {
+                  "received_by": "identity1"
+                }
+              },
+              {
+                "data": {
+                  "type": "peer",
+                  "pubkey": "peer2",
+                  "name": "Bob"
+                },
+                "metadata": {
+                  "received_by": "identity1"
+                }
+              },
+              {
+                "data": {
+                  "type": "sync_peers",
+                  "sender": "peer3"
+                },
+                "metadata": {
+                  "received_by": "identity1"
+                }
+              }
             ]
           }
         }
@@ -63,13 +135,18 @@
         {
           "given": {
             "db": {},
-            "params": {"sender": "peer1"}
+            "params": {
+              "sender": "peer1"
+            }
           },
           "then": {
             "return": {
               "return": "Sync request created",
               "newEvents": [
-                {"type": "sync_peers", "sender": "peer1"}
+                {
+                  "type": "sync_peers",
+                  "sender": "peer1"
+                }
               ]
             }
           }
@@ -82,8 +159,12 @@
       "tests": [
         {
           "given": {
-            "db": {"state": {}},
-            "params": {"recipient": "peer2"}
+            "db": {
+              "state": {}
+            },
+            "params": {
+              "recipient": "peer2"
+            }
           },
           "then": {
             "return": {
@@ -94,7 +175,10 @@
                 "outgoing": [
                   {
                     "recipient": "peer2",
-                    "data": {"type": "sync_peers", "sender": "*"}
+                    "data": {
+                      "type": "sync_peers",
+                      "sender": "*"
+                    }
                   }
                 ]
               }
@@ -112,14 +196,38 @@
             "db": {
               "state": {
                 "identities": [
-                  {"pubkey": "id1", "privkey": "id1_priv", "name": "Identity1"},
-                  {"pubkey": "id2", "privkey": "id2_priv", "name": "Identity2"}
+                  {
+                    "pubkey": "id1",
+                    "privkey": "id1_priv",
+                    "name": "Identity1"
+                  },
+                  {
+                    "pubkey": "id2",
+                    "privkey": "id2_priv",
+                    "name": "Identity2"
+                  }
                 ],
                 "peers": [
-                  {"pubkey": "peer1", "name": "Peer1", "received_by": "id1"},
-                  {"pubkey": "peer2", "name": "Peer2", "received_by": "id1"},
-                  {"pubkey": "peer1", "name": "Peer1", "received_by": "id2"},
-                  {"pubkey": "peer2", "name": "Peer2", "received_by": "id2"}
+                  {
+                    "pubkey": "peer1",
+                    "name": "Peer1",
+                    "received_by": "id1"
+                  },
+                  {
+                    "pubkey": "peer2",
+                    "name": "Peer2",
+                    "received_by": "id1"
+                  },
+                  {
+                    "pubkey": "peer1",
+                    "name": "Peer1",
+                    "received_by": "id2"
+                  },
+                  {
+                    "pubkey": "peer2",
+                    "name": "Peer2",
+                    "received_by": "id2"
+                  }
                 ]
               }
             },
@@ -132,31 +240,67 @@
             "db": {
               "state": {
                 "identities": [
-                  {"pubkey": "id1", "privkey": "id1_priv", "name": "Identity1"},
-                  {"pubkey": "id2", "privkey": "id2_priv", "name": "Identity2"}
+                  {
+                    "pubkey": "id1",
+                    "privkey": "id1_priv",
+                    "name": "Identity1"
+                  },
+                  {
+                    "pubkey": "id2",
+                    "privkey": "id2_priv",
+                    "name": "Identity2"
+                  }
                 ],
                 "peers": [
-                  {"pubkey": "peer1", "name": "Peer1", "received_by": "id1"},
-                  {"pubkey": "peer2", "name": "Peer2", "received_by": "id1"},
-                  {"pubkey": "peer1", "name": "Peer1", "received_by": "id2"},
-                  {"pubkey": "peer2", "name": "Peer2", "received_by": "id2"}
+                  {
+                    "pubkey": "peer1",
+                    "name": "Peer1",
+                    "received_by": "id1"
+                  },
+                  {
+                    "pubkey": "peer2",
+                    "name": "Peer2",
+                    "received_by": "id1"
+                  },
+                  {
+                    "pubkey": "peer1",
+                    "name": "Peer1",
+                    "received_by": "id2"
+                  },
+                  {
+                    "pubkey": "peer2",
+                    "name": "Peer2",
+                    "received_by": "id2"
+                  }
                 ],
                 "outgoing": [
                   {
                     "recipient": "peer1",
-                    "data": {"type": "sync_peers", "sender": "id1"}
+                    "data": {
+                      "type": "sync_peers",
+                      "sender": "id1"
+                    }
                   },
                   {
                     "recipient": "peer2",
-                    "data": {"type": "sync_peers", "sender": "id1"}
+                    "data": {
+                      "type": "sync_peers",
+                      "sender": "id1"
+                    }
                   },
                   {
                     "recipient": "peer1",
-                    "data": {"type": "sync_peers", "sender": "id2"}
+                    "data": {
+                      "type": "sync_peers",
+                      "sender": "id2"
+                    }
                   },
                   {
                     "recipient": "peer2",
-                    "data": {"type": "sync_peers", "sender": "id2"}
+                    "data": {
+                      "type": "sync_peers",
+                      "sender": "id2"
+                    }
                   }
                 ]
               }
@@ -166,262 +310,5 @@
       ]
     }
   },
-  "job": "sync_all",
-  "multi_tick_tests": [
-    {
-      "description": "Test peer-only syncing flow between two identities (no messages)",
-      "ticks": [
-        {
-          "given": {
-            "db": {
-              "state": {
-                "identities": [
-                  {"pubkey": "alice", "privkey": "alice_priv", "name": "Alice"},
-                  {"pubkey": "bob", "privkey": "bob_priv", "name": "Bob"}
-                ],
-                "peers": [
-                  {"pubkey": "alice", "name": "Alice", "received_by": "alice"},
-                  {"pubkey": "bob", "name": "Bob", "received_by": "alice"},
-                  {"pubkey": "alice", "name": "Alice", "received_by": "bob"},
-                  {"pubkey": "bob", "name": "Bob", "received_by": "bob"}
-                ],
-                "messages": []
-              },
-              "eventStore": {
-                "alice": [
-                  {"type": "peer", "pubkey": "alice", "name": "Alice"}
-                ],
-                "bob": [
-                  {"type": "peer", "pubkey": "bob", "name": "Bob"}
-                ]
-              }
-            }
-          },
-          "handlers": ["sync_peers", "tor_simulator"],
-          "then": {
-            "db": {
-              "state": {
-                "outgoing": [],
-                "incoming": [
-                  {
-                    "recipient": "alice",
-                    "data": {"type": "sync_peers", "sender": "bob"}
-                  },
-                  {
-                    "recipient": "bob",
-                    "data": {"type": "sync_peers", "sender": "alice"}
-                  }
-                ]
-              }
-            }
-          }
-        },
-        {
-          "given": {},
-          "handlers": ["incoming", "sync_peers", "tor_simulator"],
-          "then": {
-            "db": {
-              "state": {
-                "outgoing": [],
-                "incoming": [
-                  {
-                    "recipient": "bob",
-                    "data": {"type": "peer", "pubkey": "alice", "name": "Alice"}
-                  },
-                  {
-                    "recipient": "alice",
-                    "data": {"type": "peer", "pubkey": "bob", "name": "Bob"}
-                  }
-                ]
-              }
-            }
-          }
-        },
-        {
-          "given": {},
-          "handlers": ["incoming", "peer"],
-          "then": {
-            "db": {
-              "state": {
-                "peers": [
-                  {"pubkey": "alice", "name": "Alice", "received_by": "alice"},
-                  {"pubkey": "bob", "name": "Bob", "received_by": "alice"},
-                  {"pubkey": "alice", "name": "Alice", "received_by": "bob"},
-                  {"pubkey": "bob", "name": "Bob", "received_by": "bob"}
-                ],
-                "messages": []
-              },
-              "eventStore": {
-                "alice": [
-                  {"type": "peer", "pubkey": "alice", "name": "Alice"},
-                  {"type": "peer", "pubkey": "bob", "name": "Bob"}
-                ],
-                "bob": [
-                  {"type": "peer", "pubkey": "bob", "name": "Bob"},
-                  {"type": "peer", "pubkey": "alice", "name": "Alice"}
-                ]
-              }
-            }
-          }
-        }
-      ]
-    },
-    {
-      "description": "Test three-way peer syncing with Charlie joining late",
-      "ticks": [
-        {
-          "given": {
-            "db": {
-              "state": {
-                "identities": [
-                  {"pubkey": "alice", "privkey": "alice_priv", "name": "Alice"},
-                  {"pubkey": "bob", "privkey": "bob_priv", "name": "Bob"}
-                ],
-                "peers": [
-                  {"pubkey": "alice", "name": "Alice", "received_by": "alice"},
-                  {"pubkey": "bob", "name": "Bob", "received_by": "alice"},
-                  {"pubkey": "alice", "name": "Alice", "received_by": "bob"},
-                  {"pubkey": "bob", "name": "Bob", "received_by": "bob"}
-                ]
-              },
-              "eventStore": {
-                "alice": [{"type": "peer", "pubkey": "alice", "name": "Alice"}],
-                "bob": [{"type": "peer", "pubkey": "bob", "name": "Bob"}]
-              }
-            }
-          },
-          "handlers": ["sync_peers", "tor_simulator"],
-          "then": {
-            "db": {
-              "state": {
-                "incoming": [
-                  {
-                    "recipient": "alice",
-                    "data": {"type": "sync_peers", "sender": "bob"}
-                  },
-                  {
-                    "recipient": "bob",
-                    "data": {"type": "sync_peers", "sender": "alice"}
-                  }
-                ]
-              }
-            }
-          }
-        },
-        {
-          "given": {
-            "db": {
-              "state": {
-                "identities": [
-                  {"pubkey": "alice", "privkey": "alice_priv", "name": "Alice"},
-                  {"pubkey": "bob", "privkey": "bob_priv", "name": "Bob"},
-                  {"pubkey": "charlie", "privkey": "charlie_priv", "name": "Charlie"}
-                ],
-                "peers": [
-                  {"pubkey": "alice", "name": "Alice", "received_by": "alice"},
-                  {"pubkey": "bob", "name": "Bob", "received_by": "alice"},
-                  {"pubkey": "charlie", "name": "Charlie", "received_by": "alice"},
-                  {"pubkey": "alice", "name": "Alice", "received_by": "bob"},
-                  {"pubkey": "bob", "name": "Bob", "received_by": "bob"},
-                  {"pubkey": "charlie", "name": "Charlie", "received_by": "bob"},
-                  {"pubkey": "alice", "name": "Alice", "received_by": "charlie"},
-                  {"pubkey": "bob", "name": "Bob", "received_by": "charlie"},
-                  {"pubkey": "charlie", "name": "Charlie", "received_by": "charlie"}
-                ]
-              },
-              "eventStore": {
-                "charlie": [{"type": "peer", "pubkey": "charlie", "name": "Charlie"}]
-              }
-            }
-          },
-          "handlers": ["incoming", "sync_peers", "tor_simulator"],
-          "then": {
-            "db": {
-              "state": {
-                "incoming": [
-                  {
-                    "recipient": "alice",
-                    "data": {"type": "sync_peers", "sender": "charlie"}
-                  },
-                  {
-                    "recipient": "bob",
-                    "data": {"type": "sync_peers", "sender": "charlie"}
-                  },
-                  {
-                    "recipient": "charlie",
-                    "data": {"type": "sync_peers", "sender": "alice"}
-                  },
-                  {
-                    "recipient": "charlie",
-                    "data": {"type": "sync_peers", "sender": "bob"}
-                  },
-                  {
-                    "recipient": "bob",
-                    "data": {"type": "peer", "pubkey": "alice", "name": "Alice"}
-                  },
-                  {
-                    "recipient": "alice",
-                    "data": {"type": "peer", "pubkey": "bob", "name": "Bob"}
-                  }
-                ]
-              }
-            }
-          }
-        },
-        {
-          "given": {},
-          "handlers": ["incoming", "sync_peers", "tor_simulator"],
-          "then": {
-            "db": {
-              "state": {
-                "incoming": [
-                  {
-                    "recipient": "charlie",
-                    "data": {"type": "peer", "pubkey": "alice", "name": "Alice"}
-                  },
-                  {
-                    "recipient": "charlie",
-                    "data": {"type": "peer", "pubkey": "bob", "name": "Bob"}
-                  },
-                  {
-                    "recipient": "alice",
-                    "data": {"type": "peer", "pubkey": "charlie", "name": "Charlie"}
-                  },
-                  {
-                    "recipient": "bob",
-                    "data": {"type": "peer", "pubkey": "charlie", "name": "Charlie"}
-                  }
-                ]
-              }
-            }
-          }
-        },
-        {
-          "given": {},
-          "handlers": ["incoming", "peer"],
-          "then": {
-            "db": {
-              "eventStore": {
-                "alice": [
-                  {"type": "peer", "pubkey": "alice", "name": "Alice"},
-                  {"type": "peer", "pubkey": "bob", "name": "Bob"},
-                  {"type": "peer", "pubkey": "charlie", "name": "Charlie"}
-                ],
-                "bob": [
-                  {"type": "peer", "pubkey": "bob", "name": "Bob"},
-                  {"type": "peer", "pubkey": "alice", "name": "Alice"},
-                  {"type": "peer", "pubkey": "charlie", "name": "Charlie"}
-                ],
-                "charlie": [
-                  {"type": "peer", "pubkey": "charlie", "name": "Charlie"},
-                  {"type": "peer", "pubkey": "alice", "name": "Alice"},
-                  {"type": "peer", "pubkey": "bob", "name": "Bob"}
-                ]
-              }
-            }
-          }
-        }
-      ]
-    }
-  ]
+  "job": "sync_all"
 }

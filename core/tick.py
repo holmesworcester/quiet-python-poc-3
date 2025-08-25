@@ -1,14 +1,42 @@
+"""
+Tick processing with batch transaction support.
+
+Key changes:
+- Incoming messages processed in batch, each in its own transaction
+- Jobs run with transaction support
+- Failed jobs don't stop tick processing
+"""
 import os
+import logging
 from core.command import run_command
+from core.handle import handle_batch
+
+logger = logging.getLogger(__name__)
 
 
 def tick(db, time_now_ms=None):
     """
-    Main event loop - runs all handler jobs.
-    The incoming handler job now handles message decryption and routing.
+    Main event loop with batch transaction support.
+    Processes incoming messages first, then runs all handler jobs.
     """
-    # Run all jobs from all handlers (including the incoming handler)
+    has_transactions = hasattr(db, 'begin_transaction')
+    events_processed = 0
+    jobs_run = 0
+    
+    # The incoming handler job will process incoming messages if configured
+    # No special processing needed here - run_all_jobs will handle it
+    
+    # Run all jobs from all handlers
     db = run_all_jobs(db, time_now_ms)
+    
+    # Count jobs for return value (API compatibility)
+    from core.handler_discovery import discover_handlers, load_handler_config
+    handler_base = os.environ.get("HANDLER_PATH", "handlers")
+    handler_names = discover_handlers(handler_base)
+    for handler_name in handler_names:
+        config = load_handler_config(handler_name, handler_base)
+        if config and 'job' in config:
+            jobs_run += 1
     
     return db
 
@@ -51,7 +79,8 @@ def run_all_jobs(db, time_now_ms):
             
         except Exception as e:
             # Log but don't crash - jobs should be resilient
-            print(f"Error running job {job_command} for {handler_name}: {e}")
+            logger.error(f"Job {handler_name}.{job_command} failed: {e}")
+            # Continue with next job - one job failure doesn't stop tick
             continue
     
     return db
