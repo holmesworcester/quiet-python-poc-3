@@ -1,4 +1,4 @@
-def execute(input_data, identity, db):
+def execute(input_data, db):
     """
     Sends a sync-request to a recipient peer via outgoing
     """
@@ -20,7 +20,7 @@ def execute(input_data, identity, db):
     # Create sync_peers event
     sync_event = {
         "type": "sync_peers",
-        "sender": identity  # Use current identity as sender
+        "sender": input_data.get("sender")  # Get sender from input_data
     }
     
     # Create outgoing envelope

@@ -1,4 +1,4 @@
-def execute(input_data, identity, db):
+def execute(input_data, db):
     """
     Converts all outgoing events to recipient peer to incoming events for that recipient
     """

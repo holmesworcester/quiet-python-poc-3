@@ -204,16 +204,13 @@ def execute_api(protocol_name, method, path, data=None, params=None):
             # Convert persistent db to dict for response
             after_state = updated_db.to_dict() if hasattr(updated_db, 'to_dict') else updated_db
             
-            # Return before/after states for demo
+            # Return tick results
             return {
                 "status": 200,
                 "headers": {"Content-Type": "application/json"},
                 "body": {
                     "jobsRun": 5,  # Number of handlers with jobs
-                    "eventsProcessed": 0,  # Would need to track this
-                    "beforeState": before_state,
-                    "afterState": after_state,
-                    "db": after_state  # Return updated db for persistence
+                    "eventsProcessed": 0  # Would need to track this
                 }
             }
             

@@ -1,7 +1,7 @@
 from core.handle import handle
 
 
-def execute(input_data, identity, db):
+def execute(input_data, db):
     """
     Process incoming message queue for message_via_tor protocol.
     This protocol doesn't use message layer encryption, so we just

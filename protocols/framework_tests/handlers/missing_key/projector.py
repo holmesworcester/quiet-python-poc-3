@@ -7,7 +7,9 @@ def project(db, envelope, time_now_ms):
         db['state'] = {}
     
     if 'pending_missing_key' not in db['state']:
-        db['state']['pending_missing_key'] = []
+        state = db['state']
+        state['pending_missing_key'] = []
+        db['state'] = state
     
     # Extract metadata
     metadata = envelope.get('metadata', {})
@@ -20,6 +22,9 @@ def project(db, envelope, time_now_ms):
         'timestamp': metadata.get('receivedAt', time_now_ms)
     }
     
-    db['state']['pending_missing_key'].append(pending_entry)
+    # Get state, modify it, and reassign to trigger persistence
+    state = db['state']
+    state['pending_missing_key'].append(pending_entry)
+    db['state'] = state  # Trigger persistence!
     
     return db

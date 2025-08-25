@@ -4,7 +4,7 @@ from core.crypto import decrypt, hash, get_crypto_mode, encrypt
 from core.handle import handle
 
 
-def execute(input_data, identity, db):
+def execute(input_data, db):
     """
     Process incoming message queue by decrypting and routing to handlers.
     This replaces the greedy_decrypt functionality as a handler job.

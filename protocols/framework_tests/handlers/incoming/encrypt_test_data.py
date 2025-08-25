@@ -1,4 +1,4 @@
-def execute(input_data, identity, db):
+def execute(input_data, db):
     """
     Encrypt test data for real crypto tests.
     This command generates properly encrypted blobs that can be used in decrypt tests.

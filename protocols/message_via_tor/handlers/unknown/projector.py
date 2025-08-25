@@ -7,7 +7,9 @@ def project(db, envelope, time_now_ms):
         db['state'] = {}
     
     if 'unknown_events' not in db['state']:
-        db['state']['unknown_events'] = []
+        state = db['state']
+        state['unknown_events'] = []
+        db['state'] = state
     
     # Add to unknown events table
     unknown_entry = {
@@ -16,6 +18,9 @@ def project(db, envelope, time_now_ms):
         'timestamp': envelope.get('metadata', {}).get('receivedAt', time_now_ms)
     }
     
-    db['state']['unknown_events'].append(unknown_entry)
+    # Get state, modify it, and reassign to trigger persistence
+    state = db['state']
+    state['unknown_events'].append(unknown_entry)
+    db['state'] = state  # Trigger persistence!
     
     return db

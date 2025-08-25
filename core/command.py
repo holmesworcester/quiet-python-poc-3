@@ -53,11 +53,22 @@ def run_command(handler_name, command_name, input_data, db=None, time_now_ms=Non
     if isinstance(result, dict) and 'newEvents' in result:
         for event in result['newEvents']:
             # Create envelope for the event
+            metadata = {
+                'selfGenerated': True
+            }
+            
+            # If event has received_by, move it to metadata
+            if 'received_by' in event:
+                metadata['received_by'] = event['received_by']
+                # Remove from event data to avoid duplication
+                event_copy = event.copy()
+                del event_copy['received_by']
+            else:
+                event_copy = event
+            
             envelope = {
-                'data': event,
-                'metadata': {
-                    'selfGenerated': True
-                }
+                'data': event_copy,
+                'metadata': metadata
             }
             # Project the event using handle
             db = handle(db, envelope, time_now_ms)

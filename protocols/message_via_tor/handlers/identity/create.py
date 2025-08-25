@@ -1,13 +1,13 @@
-from core.crypto import get_keypair
+from core.crypto import generate_keypair
 import json
 
 
-def execute(input_data, identity, db):
+def execute(input_data, db):
     """
     Creates an identity containing pubkey, privkey, and calls peer.create
     """
-    # Generate a new keypair for this identity
-    keypair = get_keypair(identity)
+    # Generate a new keypair
+    keypair = generate_keypair()
     privkey = keypair["private"]
     pubkey = keypair["public"]
     
@@ -16,23 +16,20 @@ def execute(input_data, identity, db):
         "type": "identity",
         "pubkey": pubkey,
         "privkey": privkey,
-        "name": input_data.get("name", identity)
+        "name": input_data.get("name", pubkey[:8])  # Default name to first 8 chars of pubkey
     }
     
     # Also create a peer event for this identity
     peer_event = {
         "type": "peer",
         "pubkey": pubkey,
-        "name": input_data.get("name", identity)
+        "name": input_data.get("name", pubkey[:8])
     }
     
     return {
         "api_response": {
-            "return": "Identity created",
-            "identity": {
-                "pubkey": pubkey,
-                "name": input_data.get("name", identity)
-            }
+            "identityId": pubkey,
+            "publicKey": pubkey
         },
         "newEvents": [identity_event, peer_event]
     }

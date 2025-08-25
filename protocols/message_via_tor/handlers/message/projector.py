@@ -19,7 +19,10 @@ def project(db, envelope, time_now_ms):
     if 'eventStore' not in db:
         db['eventStore'] = []
     
-    db['eventStore'].append(data)
+    # Get eventStore, modify, and reassign to trigger persistence
+    event_store = db['eventStore']
+    event_store.append(data)
+    db['eventStore'] = event_store
     
     # Check if message has text
     text = data.get('text')
@@ -54,7 +57,9 @@ def project(db, envelope, time_now_ms):
     # Process all messages with text
     # Valid - update state
     if 'messages' not in db['state']:
-        db['state']['messages'] = []
+        state = db['state']
+        state['messages'] = []
+        db['state'] = state
     
     # Extract message info
     message = {
@@ -91,7 +96,9 @@ def project(db, envelope, time_now_ms):
     if not is_known_peer:
         message['unknown_peer'] = True
     
-    # Add to messages
-    db['state']['messages'].append(message)
+    # Get state, add message, and reassign to trigger persistence
+    state = db['state']
+    state['messages'].append(message)
+    db['state'] = state
     
     return db

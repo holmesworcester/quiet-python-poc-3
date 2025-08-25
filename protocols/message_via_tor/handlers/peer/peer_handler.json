@@ -121,6 +121,43 @@
         }
       },
       {
+        "description": "Self-generated peer event for own identity should have received_by set to self",
+        "given": {
+          "db": {
+            "state": {
+              "identities": [
+                {"pubkey": "alice_pubkey", "privkey": "alice_privkey", "name": "Alice"},
+                {"pubkey": "bob_pubkey", "privkey": "bob_privkey", "name": "Bob"}
+              ],
+              "peers": []
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "peer",
+              "pubkey": "bob_pubkey",
+              "name": "Bob"
+            },
+            "metadata": {"selfGenerated": true}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "peers": [
+                {
+                  "pubkey": "bob_pubkey",
+                  "name": "Bob",
+                  "joined_via": "direct",
+                  "added_at": "*",
+                  "received_by": "bob_pubkey"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
         "description": "Peer event should only remove unknown_peer flag for messages received by same identity",
         "given": {
           "db": {

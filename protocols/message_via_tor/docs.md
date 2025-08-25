@@ -7,6 +7,51 @@ In this simplified p2p network, every user has an identity keypair (`identity`) 
 
 Like Slack (or Tor) a client can have multiple identities, so we can easily test an entire network by having multiple peers in a single client, provided we have a handler to simulate the network: `tor-simulator`.
 
+### Identity and Peer Event Model
+
+**Critical Concept**: Each identity maintains its own view of the world based on what it has received. This is tracked through the `received_by` field in event envelopes.
+
+An **identity** is a keypair (public key + private key) and a name. The public key serves as the permanent address for that identity.
+
+A **peer** event and its envelope represents knowledge that a specific identity has about another participant in the network. (A raw peer event without an envelope simply represents the existence of a peer.) The same peer can exist as multiple events (really, events + envelopes -- the peer event data itself will be the same for any given identity) in the event store with different `received_by` values, representing different identities' knowledge of that peer.
+
+For example:
+- Alice creates her identity (pubkey: A, privkey: a)
+- Bob creates his identity (pubkey: B, privkey: b)
+- When Alice learns about Bob, a peer event is created: `{type: "peer", pubkey: "B", name: "Bob"}` with envelope metadata `received_by: "A"`
+- When Bob learns about Alice, a separate peer event is created: `{type: "peer", pubkey: "A", name: "Alice"}` with envelope metadata `received_by: "B"`
+- These are stored as two distinct events in the event store, even though they have similar payloads
+
+### The `received_by` Field and Its Consequences
+
+The `received_by` field in the envelope metadata is fundamental to the multi-identity architecture:
+
+1. **Event Ownership**: Every event in the system belongs to a specific identity indicated by `received_by`. This includes:
+   - Peer events (who this identity knows about)
+   - Message events (messages this identity has sent or received)
+   - Sync events (synchronization requests for this identity)
+
+2. **State Segregation**: Each identity's state is derived only from events where `received_by` matches that identity's public key. This ensures:
+   - Complete isolation between different identities on the same node
+   - Each identity sees only its own peer relationships
+   - Messages are visible only to the sending and receiving identities
+
+3. **Event Duplication**: The same logical event (e.g., a message from Alice to Bob) will exist as multiple events in the store:
+   - One with `received_by: "A"` (Alice's copy of the sent message)
+   - One with `received_by: "B"` (Bob's copy of the received message)
+   - This is by design and ensures proper state segregation
+
+4. **Join Process**: When joining via invite:
+   - The invitee creates their new identity
+   - The invitee stores the inviter as a peer with `received_by` set to the invitee's public key
+   - The invitee should attempt to send their identity information (as a peer event) to the inviter
+   - The inviter will receive this peer event with `received_by` set to the inviter's public key
+
+5. **Network Simulation**: The `tor-simulator` handler is responsible for:
+   - Taking outgoing events from one identity
+   - Creating incoming events for the recipient identity
+   - Setting the correct `received_by` field on the delivered event
+
 ### Handlers
 
 `identity` has:

@@ -1,14 +1,15 @@
-def execute(input_data, identity, db):
+def execute(input_data, db):
     """
     Provides a list of all client identities
     """
     # Get all identities from state
     identities = db.get('state', {}).get('identities', [])
     
-    # Return list of identities (without private keys)
+    # Return list of identities (without private keys) matching API spec
     identity_list = [
         {
-            "pubkey": id_data.get("pubkey"),
+            "identityId": id_data.get("pubkey"),
+            "publicKey": id_data.get("pubkey"),
             "name": id_data.get("name")
         }
         for id_data in identities
@@ -16,7 +17,6 @@ def execute(input_data, identity, db):
     
     return {
         "api_response": {
-            "return": f"Found {len(identity_list)} identities",
             "identities": identity_list
         }
     }

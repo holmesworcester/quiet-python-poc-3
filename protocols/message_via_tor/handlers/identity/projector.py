@@ -36,13 +36,18 @@ def project(db, envelope, time_now_ms):
         'name': name or pubkey[:8]
     }
     
-    db['state']['identities'].append(identity_data)
+    # Get the state, modify it, and reassign to trigger persistence
+    state = db['state']
+    state['identities'].append(identity_data)
+    db['state'] = state  # This triggers persistence!
     
     # Store in eventStore
     if 'eventStore' not in db:
         db['eventStore'] = []
     
-    # Append the event data directly
-    db['eventStore'].append(data)
+    # Get eventStore, modify it, and reassign to trigger persistence
+    event_store = db['eventStore']
+    event_store.append(data)
+    db['eventStore'] = event_store  # This triggers persistence!
     
     return db

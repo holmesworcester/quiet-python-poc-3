@@ -11,7 +11,7 @@ if handler_dir not in sys.path:
 from identity import create as identity_create
 
 
-def execute(input_data, identity, db):
+def execute(input_data, db):
     """
     Consumes a valid invite link, creates an identity for the joining user
     and a peer event for the peer in invite
@@ -25,8 +25,7 @@ def execute(input_data, identity, db):
             }
         }
     
-    # Check both camelCase and snake_case for compatibility
-    invite_link = input_data.get("inviteLink") or input_data.get("invite_link", "")
+    invite_link = input_data.get("inviteLink", "")
     
     # Parse invite link
     if not invite_link.startswith("message-via-tor://invite/"):
@@ -60,15 +59,15 @@ def execute(input_data, identity, db):
         }
     
     # Use identity.create to create the new identity (DRY principle)
-    create_result = identity_create.execute({"name": name}, identity, db)
+    create_result = identity_create.execute({"name": name}, db)
     
     # Extract the created identity info
-    new_pubkey = create_result["api_response"]["identity"]["pubkey"]
+    new_pubkey = create_result["api_response"]["identityId"]
     
     # Get the events created by identity.create
     identity_events = create_result.get("newEvents", [])
     
-    # Create peer event for the inviter
+    # Create peer event for the inviter (local knowledge)
     inviter_peer_event = {
         "type": "peer",
         "pubkey": peer_pubkey,
@@ -76,6 +75,27 @@ def execute(input_data, identity, db):
         "joined_via": "invite",
         "received_by": new_pubkey  # This peer is known by the new identity
     }
+    
+    # Create peer event to send to the inviter (share our identity)
+    our_peer_event = {
+        "type": "peer",
+        "pubkey": new_pubkey,
+        "name": name,
+        "joined_via": "direct"  # From inviter's perspective, this is a direct peer add
+    }
+    
+    # Create outgoing envelope to send our peer info to the inviter
+    outgoing_peer_event = {
+        "recipient": peer_pubkey,
+        "data": our_peer_event
+    }
+    
+    # Update outgoing queue in state
+    state = db.get('state', {})
+    if 'outgoing' not in state:
+        state['outgoing'] = []
+    state['outgoing'].append(outgoing_peer_event)
+    db['state'] = state
     
     # Combine all events
     all_events = identity_events + [inviter_peer_event]

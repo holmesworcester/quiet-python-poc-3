@@ -18,15 +18,19 @@ def project(db, envelope, time_now_ms):
     if 'eventStore' not in db:
         db['eventStore'] = []
     
-    db['eventStore'].append(data)
+    # Get eventStore, modify it, and reassign to trigger persistence
+    event_store = db['eventStore']
+    event_store.append(data)
+    db['eventStore'] = event_store  # Trigger persistence!
     
     # Check if sender is known
     known_senders = db['state'].get("known_senders", [])
     
     if sender in known_senders:
         # Valid - update state
-        if "messages" not in db['state']:
-            db['state']["messages"] = []
+        state = db['state']
+        if "messages" not in state:
+            state["messages"] = []
         
         # Extract message info - preserve all fields from data
         message = data.copy()
@@ -50,30 +54,35 @@ def project(db, envelope, time_now_ms):
             message["replyTo"] = data["replyTo"]
         
         # Add to messages
-        db['state']["messages"].append(message)
+        state["messages"].append(message)
         
         # Update conversation threads
-        if "threads" not in db['state']:
-            db['state']["threads"] = {}
+        if "threads" not in state:
+            state["threads"] = {}
         
         # If this is a reply, add to thread
         if "replyTo" in data:
             thread_id = data["replyTo"]
-            if thread_id not in db['state']["threads"]:
-                db['state']["threads"][thread_id] = []
-            db['state']["threads"][thread_id].append(message.get("id", "unknown"))
+            if thread_id not in state["threads"]:
+                state["threads"][thread_id] = []
+            state["threads"][thread_id].append(message.get("id", "unknown"))
         
         # Update last activity
         if data.get("timestamp"):
-            db['state']["lastActivity"] = data["timestamp"]
+            state["lastActivity"] = data["timestamp"]
+        
+        db['state'] = state  # Trigger persistence!
     else:
         # Invalid - ensure messages list exists but don't add to it
-        if "messages" not in db['state']:
-            db['state']["messages"] = []
+        state = db['state']
+        if "messages" not in state:
+            state["messages"] = []
         
         # Add to pending since sender is unknown
-        if "pending" not in db['state']:
-            db['state']["pending"] = []
-        db['state']["pending"].append({"event": "..."})
+        if "pending" not in state:
+            state["pending"] = []
+        state["pending"].append({"event": "..."})
+        
+        db['state'] = state  # Trigger persistence!
     
     return db

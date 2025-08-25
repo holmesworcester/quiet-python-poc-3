@@ -1,9 +1,9 @@
-def execute(input_data, identity, db):
+def execute(input_data, db):
     """
     Creates and returns a new peer event
     """
-    # API expects publicKey, but we use pubkey internally
-    pubkey = input_data.get("publicKey") or input_data.get("pubkey")
+    # API expects publicKey
+    pubkey = input_data.get("publicKey")
     name = input_data.get("name", pubkey[:8] if pubkey else "Unknown")
     
     if not pubkey:

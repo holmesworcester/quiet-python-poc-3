@@ -2,17 +2,26 @@ import json
 import base64
 
 
-def execute(input_data, identity, db):
+def execute(input_data, db):
     """
     Returns an invite-link containing this peer, for sharing out-of-band
     """
-    # The identity parameter should be the pubkey/ID from the URL path
+    # Get the identityId from path parameters
+    identity_id = input_data.get('identityId')
+    if not identity_id:
+        return {
+            "api_response": {
+                "return": "Error: Identity ID not provided",
+                "error": "identityId is required"
+            }
+        }
+    
     # Find the full identity data
     identities = db.get('state', {}).get('identities', [])
     identity_data = None
     
     for id_data in identities:
-        if id_data.get('pubkey') == identity:
+        if id_data.get('pubkey') == identity_id:
             identity_data = id_data
             break
     
@@ -20,7 +29,7 @@ def execute(input_data, identity, db):
         return {
             "api_response": {
                 "return": "Error: Identity not found",
-                "error": f"No identity found with pubkey {identity}"
+                "error": f"No identity found with pubkey {identity_id}"
             },
             "internal": {}
         }
@@ -38,7 +47,7 @@ def execute(input_data, identity, db):
     return {
         "api_response": {
             "return": "Invite link created",
-            "inviteLink": invite_link,  # Use camelCase for API consistency
+            "inviteLink": invite_link,
             "inviteData": invite_data
         }
     }

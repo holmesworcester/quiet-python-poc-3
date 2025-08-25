@@ -27,10 +27,21 @@ def project(db, envelope, time_now_ms):
     if not received_by:
         # For self-generated peer events, use the sender's identity
         if metadata.get('selfGenerated'):
-            # For peer events, we need to determine our identity differently
-            # Look for the first identity in our identities list
+            # For self-generated peer events about oneself (like when creating an identity),
+            # the peer IS the identity that should receive it
+            # Check if this peer event is about an identity we just created
+            peer_pubkey = data.get('pubkey')
             identities = db['state'].get('identities', [])
-            if identities:
+            
+            # If this peer matches one of our identities, it's a self-peer event
+            for identity in identities:
+                if identity.get('pubkey') == peer_pubkey:
+                    received_by = peer_pubkey
+                    break
+            
+            # If still no received_by and we have identities, this might be a peer
+            # being added manually, so use the first identity
+            if not received_by and identities:
                 received_by = identities[0].get('pubkey')
         
         if not received_by:
@@ -53,23 +64,29 @@ def project(db, envelope, time_now_ms):
         'received_by': received_by  # Track which identity knows this peer
     }
     
-    db['state']['peers'].append(peer_data)
-    
-    # Store in eventStore
-    if 'eventStore' not in db:
-        db['eventStore'] = []
-    
-    # Append the event data directly
-    db['eventStore'].append(data)
+    # Get state, modify, and reassign to trigger persistence
+    state = db['state']
+    state['peers'].append(peer_data)
     
     # Check for messages from this peer marked as unknown_peer and update them
     # Only update messages that were received by the same identity
-    messages = db['state'].get('messages', [])
+    messages = state.get('messages', [])
     for message in messages:
         if (message.get('sender') == pubkey and 
             message.get('received_by') == received_by and
             message.get('unknown_peer')):
             # Remove the unknown_peer flag
             del message['unknown_peer']
+    
+    db['state'] = state  # Trigger persistence!
+    
+    # Store in eventStore
+    if 'eventStore' not in db:
+        db['eventStore'] = []
+    
+    # Get eventStore, modify, and reassign
+    event_store = db['eventStore']
+    event_store.append(data)
+    db['eventStore'] = event_store  # Trigger persistence!
     
     return db

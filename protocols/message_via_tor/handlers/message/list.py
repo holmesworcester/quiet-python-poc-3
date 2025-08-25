@@ -1,9 +1,9 @@
-def execute(input_data, identity, db):
+def execute(input_data, db):
     """
     Given a peer public key, returns all messages known to that peer
     """
     # API passes peerId as path parameter
-    peer_pubkey = input_data.get("peerId") or input_data.get("peer_pubkey")
+    peer_pubkey = input_data.get("peerId")
     
     if not peer_pubkey:
         return {

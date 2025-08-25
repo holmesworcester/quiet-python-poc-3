@@ -18,53 +18,70 @@ from textual.reactive import reactive
 from textual import events
 from textual.message import Message
 from rich.text import Text
+from textual.timer import Timer
 
 # Add the root directory to path for core imports
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
-from core.api import execute_api
+from core.api import execute_api as _execute_api
 
 # Change to project root directory for API calls
 os.chdir(project_root)
 
+# Store reference to original execute_api
+original_execute_api = _execute_api
+
 class MessageViaTorDemo(App):
     """A Textual app to demo the message_via_tor protocol."""
+    
+    # Class variable to control database reset
+    RESET_DB = True
     
     CSS = """
     Screen {
         layout: grid;
-        grid-size: 5 1;
+        grid-size: 2 2;
+        grid-rows: 1fr 1fr;
         grid-gutter: 1;
     }
     
-    #identity1 {
-        column-span: 1;
-        height: 100%;
-        border: solid blue;
+    #controls {
+        column-span: 2;
+        height: 3;
+        dock: top;
+        background: $surface;
+        border: solid $primary;
+        layout: horizontal;
     }
     
-    #identity2 {
-        column-span: 1;
-        height: 100%;
-        border: solid blue;
+    #controls Button {
+        margin: 0 1;
     }
     
-    #identity3 {
+    #identities-container {
         column-span: 1;
-        height: 100%;
-        border: solid blue;
+        row-span: 2;
+        layout: grid;
+        grid-size: 2 2;
+        grid-gutter: 1;
     }
     
-    #identity4 {
-        column-span: 1;
-        height: 100%;
+    #identity1, #identity2, #identity3, #identity4 {
         border: solid blue;
+        overflow-y: auto;
     }
     
     #state-inspector {
         column-span: 1;
-        height: 100%;
+        row-span: 1;
         border: solid magenta;
+        overflow-y: auto;
+    }
+    
+    #event-log {
+        column-span: 1;
+        row-span: 1;
+        border: solid green;
         overflow-y: auto;
     }
     
@@ -103,7 +120,6 @@ class MessageViaTorDemo(App):
     
     BINDINGS = [
         ("t", "tick", "Tick"),
-        ("r", "reset", "Reset"),
         ("tab", "switch_identity", "Switch Identity"),
         ("q", "quit", "Quit"),
         ("ctrl+c", "quit", "Quit"),
@@ -116,80 +132,193 @@ class MessageViaTorDemo(App):
         self.identity2_selected = -1
         self.identity3_selected = -1
         self.identity4_selected = -1
-        self.db = {
-            'state': {
-                'identities': [],
-                'peers': [],
-                'messages': [],
-                'outgoing': []
-            },
-            'eventStore': []
-        }
+        
+        # Set up SQL database path
+        self.db_path = 'demo.db'
+        os.environ['API_DB_PATH'] = self.db_path
+        
+        # Reset database on startup if requested
+        if self.RESET_DB and os.path.exists(self.db_path):
+            try:
+                os.remove(self.db_path)
+            except Exception as e:
+                pass
+        
         self.state_changes = []
         self._widget_counter = 0  # Counter for unique widget IDs
         self.last_invite_links = {}  # Store invite links by identity
         self.identity_mapping = {}  # Map pubkey to original identity parameter
+        
+        # Timer for auto-tick
+        self.tick_timer = None
+        self.is_playing = False
+        
+        # Event collector for real-time event display
+        self.collected_events = []  # List of events as they happen
+        self.event_counter = 0
     
     
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
         yield Header()
         
-        # Identity 1
-        with Vertical(id="identity1"):
-            yield Static("Identity 1: None", classes="identity-dropdown", id="identity1-dropdown")
-            yield RichLog(classes="messages", id="messages1", wrap=True, markup=True)
-            yield Input(placeholder="Type message or /help for commands...", id="input1")
+        # Control bar at the top
+        with Horizontal(id="controls"):
+            yield Button("▶️ Play", id="play-pause-btn", variant="primary")
+            yield Button("⏯️ Tick", id="tick-btn")
+            yield Button("🔄 Refresh", id="refresh-btn")
         
-        # Identity 2
-        with Vertical(id="identity2"):
-            yield Static("Identity 2: None", classes="identity-dropdown", id="identity2-dropdown")
-            yield RichLog(classes="messages", id="messages2", wrap=True, markup=True)
-            yield Input(placeholder="Type message or /help for commands...", id="input2")
+        # Left side - 4 identity panels in a 2x2 grid
+        with Container(id="identities-container"):
+            # Identity 1
+            with Vertical(id="identity1"):
+                yield Static("Identity 1: None", classes="identity-dropdown", id="identity1-dropdown")
+                yield RichLog(classes="messages", id="messages1", wrap=True, markup=True)
+                yield Input(placeholder="Type message or /help for commands...", id="input1")
+            
+            # Identity 2
+            with Vertical(id="identity2"):
+                yield Static("Identity 2: None", classes="identity-dropdown", id="identity2-dropdown")
+                yield RichLog(classes="messages", id="messages2", wrap=True, markup=True)
+                yield Input(placeholder="Type message or /help for commands...", id="input2")
+            
+            # Identity 3
+            with Vertical(id="identity3"):
+                yield Static("Identity 3: None", classes="identity-dropdown", id="identity3-dropdown")
+                yield RichLog(classes="messages", id="messages3", wrap=True, markup=True)
+                yield Input(placeholder="Type message or /help for commands...", id="input3")
+            
+            # Identity 4
+            with Vertical(id="identity4"):
+                yield Static("Identity 4: None", classes="identity-dropdown", id="identity4-dropdown")
+                yield RichLog(classes="messages", id="messages4", wrap=True, markup=True)
+                yield Input(placeholder="Type message or /help for commands...", id="input4")
         
-        # Identity 3
-        with Vertical(id="identity3"):
-            yield Static("Identity 3: None", classes="identity-dropdown", id="identity3-dropdown")
-            yield RichLog(classes="messages", id="messages3", wrap=True, markup=True)
-            yield Input(placeholder="Type message or /help for commands...", id="input3")
-        
-        # Identity 4
-        with Vertical(id="identity4"):
-            yield Static("Identity 4: None", classes="identity-dropdown", id="identity4-dropdown")
-            yield RichLog(classes="messages", id="messages4", wrap=True, markup=True)
-            yield Input(placeholder="Type message or /help for commands...", id="input4")
-        
-        # State inspector
+        # Right side top - State inspector
         with VerticalScroll(id="state-inspector"):
             yield Label("State Inspector", classes="identity-label")
-            yield RichLog(id="inspector-log", wrap=True)
+            yield RichLog(id="inspector-log", wrap=True, markup=True)
+        
+        # Right side bottom - Event log
+        with VerticalScroll(id="event-log"):
+            yield Label("Event Log (newest first)", classes="identity-label")
+            yield RichLog(id="event-log-display", wrap=True, markup=True)
         
         yield Footer()
     
     def on_mount(self) -> None:
         """Called when app starts."""
+        # Initialize with empty state
+        self.refresh_state()
         self.update_displays()
+        self.update_event_log()
+        
+        # Load existing identities if not resetting
+        if not self.RESET_DB:
+            self.load_existing_identities()
+    
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button presses"""
+        button_id = event.button.id
+        
+        if button_id == "play-pause-btn":
+            self.toggle_play_pause()
+        elif button_id == "tick-btn":
+            self.action_tick()
+        elif button_id == "refresh-btn":
+            self.refresh_state()
+            self.update_displays()
+            self.update_event_log()
+    
+    def toggle_play_pause(self) -> None:
+        """Toggle between play and pause states"""
+        self.is_playing = not self.is_playing
+        play_btn = self.query_one("#play-pause-btn", Button)
+        
+        if self.is_playing:
+            play_btn.label = "⏸️ Pause"
+            # Start the timer
+            self.tick_timer = self.set_interval(1.0, self.auto_tick)
+        else:
+            play_btn.label = "▶️ Play"
+            # Stop the timer
+            if self.tick_timer:
+                self.tick_timer.stop()
+                self.tick_timer = None
+    
+    def auto_tick(self) -> None:
+        """Called by timer when playing"""
+        self.action_tick()
+    
+    def load_existing_identities(self):
+        """Load existing identities from database on startup."""
+        try:
+            # Get current identities
+            identities = self.get_identities()
+            
+            if identities:
+                # Log that we loaded existing data
+                self.record_change(f"Loaded {len(identities)} existing identities", {}, {"identities": identities})
+                
+                # Assign first 4 identities to panels
+                for i, identity in enumerate(identities[:4]):
+                    panel_num = i + 1
+                    setattr(self, f"identity{panel_num}_selected", i)
+                    
+                    # Update the label to show the identity name
+                    label = self.query_one(f"#identity{panel_num}_label", Static)
+                    label.update(f"Identity {panel_num}: {identity.get('name', 'Unknown')}")
+                    
+        except Exception as e:
+            self.record_change(f"Error loading identities: {e}", {}, {})
+    
+    def refresh_state(self):
+        """Fetch current state from the database via API calls"""
+        try:
+            # Get identities via the list API
+            response = execute_api(
+                "message_via_tor",
+                "GET",
+                "/identities",
+                data={}
+            )
+            
+            if response.get("status") == 200:
+                identities = response["body"].get("identities", [])
+                
+                # For state inspector, also show actual database state
+                from core.db import create_db
+                db = create_db(self.db_path)
+                
+                # Build complete state structure for inspector
+                self.current_state = {
+                    'state': {
+                        'identities': identities,
+                        'peers': db.get('state', {}).get('peers', []),
+                        'messages': db.get('state', {}).get('messages', []),
+                        'outgoing': db.get('state', {}).get('outgoing', [])
+                    },
+                    'eventStore': db.get('eventStore', [])[-10:]  # Last 10 events
+                }
+            else:
+                self.current_state = {'state': {'identities': []}, 'eventStore': []}
+        except Exception as e:
+            self.current_state = {'state': {'identities': []}, 'eventStore': []}
     
     def get_identities(self):
         """Get list of identities from current state"""
         identities = []
-        state = self.db.get('state', {})
+        state = self.current_state.get('state', {})
         
-        # Handle both dict and list formats
+        # Get identities from API response format
         identity_data = state.get('identities', [])
-        if isinstance(identity_data, dict):
-            for key, value in identity_data.items():
-                identities.append({
-                    'id': key,
-                    'name': value.get('name', key),
-                    'pubkey': value.get('keypair', {}).get('public', key)
-                })
-        elif isinstance(identity_data, list):
+        if isinstance(identity_data, list):
             for item in identity_data:
+                # API returns identityId and publicKey
                 identities.append({
-                    'id': item.get('pubkey', 'unknown'),
-                    'name': item.get('name', 'Unknown'),
-                    'pubkey': item.get('pubkey', 'unknown')
+                    'id': item.get('identityId', 'unknown'),
+                    'name': item.get('name', item.get('identityId', 'Unknown')[:8]),  # Use first 8 chars of ID if no name
+                    'pubkey': item.get('publicKey', item.get('identityId', 'unknown'))
                 })
         
         return identities
@@ -202,13 +331,12 @@ class MessageViaTorDemo(App):
                 "message_via_tor",
                 "GET",
                 f"/messages/{identity_pubkey}",
-                data={"db": self.db}
+                data={}
             )
             
             if response.get("status") == 200:
-                # Update our local db with any changes from the API
-                if "db" in response.get("body", {}):
-                    self.db = response["body"]["db"]
+                # Refresh state to see the changes
+                self.refresh_state()
                 
                 # Return the messages from the API response
                 return response.get("body", {}).get("messages", [])
@@ -240,10 +368,22 @@ class MessageViaTorDemo(App):
                 # Update messages
                 messages = self.get_messages_for_identity(identity['pubkey'])
                 messages_log.clear()
+                
+                # Create a mapping of pubkeys to names for better display
+                pubkey_to_name = {}
+                for id_info in identities:
+                    pubkey_to_name[id_info['pubkey']] = id_info['name']
+                
                 for msg in messages:
-                    sender = msg.get('sender', 'Unknown')[:15]
+                    sender_pubkey = msg.get('sender', 'Unknown')
+                    sender_name = pubkey_to_name.get(sender_pubkey, sender_pubkey[:8] + '...')
                     text = msg.get('text', '')
-                    messages_log.write(f"{sender}: {text}")
+                    
+                    # Show if it's our own message
+                    if sender_pubkey == identity['pubkey']:
+                        messages_log.write(f"[bold cyan]{sender_name} (You):[/bold cyan] {text}")
+                    else:
+                        messages_log.write(f"[green]{sender_name}:[/green] {text}")
             else:
                 # No identity selected - show input for commands
                 dropdown.update(f"Identity {i}: None")
@@ -258,8 +398,80 @@ class MessageViaTorDemo(App):
         
         # Show current state
         inspector.write(Text("CURRENT STATE:", style="bold cyan"))
-        state_json = json.dumps(self.db.get('state', {}), indent=2)
+        state_json = json.dumps(self.current_state.get('state', {}), indent=2)
         inspector.write(state_json)
+        
+        # Also update event log
+        self.update_event_log()
+    
+    def update_event_log(self):
+        """Update the event log display with all events and their envelopes"""
+        try:
+            event_log = self.query_one("#event-log-display", RichLog)
+            event_log.clear()
+            
+            # Get all events from the database with full envelope information
+            from core.db import create_db
+            db = create_db(self.db_path)
+            
+            # Get both event store and incoming events for complete view
+            all_events = []
+            
+            # Add events from eventStore (these have been processed)
+            event_store = db.get('eventStore', [])
+            for i, event in enumerate(event_store):
+                all_events.append({
+                    'index': i,
+                    'source': 'eventStore',
+                    'data': event,
+                    'envelope': None  # EventStore doesn't preserve envelopes
+                })
+            
+            # Add incoming events (these have full envelopes)
+            incoming = db.get('incoming', [])
+            for i, envelope in enumerate(incoming):
+                all_events.append({
+                    'index': len(event_store) + i,
+                    'source': 'incoming',
+                    'data': envelope.get('data', {}),
+                    'envelope': envelope
+                })
+            
+            # Show newest first
+            all_events.reverse()
+            
+            # Display events
+            for event_info in all_events[:50]:  # Show last 50 events
+                event_log.write(Text(f"\n[Event #{event_info['index']} from {event_info['source']}]", style="bold yellow"))
+                
+                # Show event type and key fields
+                data = event_info['data']
+                event_type = data.get('type', 'unknown')
+                event_log.write(Text(f"Type: {event_type}", style="cyan"))
+                
+                # Show key fields based on event type
+                if event_type == 'message':
+                    event_log.write(f"  Text: {data.get('text', 'N/A')[:50]}...")
+                    event_log.write(f"  Sender: {data.get('sender', 'N/A')[:20]}...")
+                elif event_type == 'peer':
+                    event_log.write(f"  Pubkey: {data.get('pubkey', 'N/A')[:20]}...")
+                    event_log.write(f"  Name: {data.get('name', 'N/A')}")
+                elif event_type == 'identity':
+                    event_log.write(f"  Pubkey: {data.get('pubkey', 'N/A')[:20]}...")
+                    event_log.write(f"  Name: {data.get('name', 'N/A')}")
+                
+                # Show envelope metadata if available
+                if event_info['envelope']:
+                    metadata = event_info['envelope'].get('metadata', {})
+                    event_log.write(Text("Envelope metadata:", style="green"))
+                    event_log.write(f"  received_by: {metadata.get('received_by', 'N/A')[:20]}...")
+                    event_log.write(f"  selfGenerated: {metadata.get('selfGenerated', 'N/A')}")
+                    event_log.write(f"  origin: {metadata.get('origin', 'N/A')}")
+                    if 'recipient' in event_info['envelope']:
+                        event_log.write(f"  recipient: {event_info['envelope']['recipient'][:20]}...")
+                
+        except Exception as e:
+            pass  # Silently ignore errors in event log update
     
     def record_change(self, operation, before_state, after_state):
         """Record a state change"""
@@ -303,7 +515,7 @@ class MessageViaTorDemo(App):
         identity = identities[identity_selected]
         
         # Send message via API
-        before_state = copy.deepcopy(self.db.get('state', {}))
+        before_state = copy.deepcopy(self.current_state.get('state', {}))
         
         try:
             response = execute_api(
@@ -312,14 +524,15 @@ class MessageViaTorDemo(App):
                 "/messages",
                 data={
                     "text": text,
-                    "db": self.db
-                },
-                identity=identity['id']
+                    "senderId": identity['pubkey'],
+                    # No db needed - using persistent database
+                }
             )
             
             if response.get("status") == 201:
-                self.db = response["body"]["db"]
-                after_state = copy.deepcopy(self.db.get('state', {}))
+                # Refresh state to see the changes
+                self.refresh_state()
+                after_state = copy.deepcopy(self.current_state.get('state', {}))
                 self.record_change(f"message.create: {text[:30]}", before_state, after_state)
             else:
                 # Show API error in current message log
@@ -340,41 +553,27 @@ class MessageViaTorDemo(App):
     
     def action_tick(self) -> None:
         """Run one tick cycle"""
-        before_state = copy.deepcopy(self.db.get('state', {}))
+        before_state = copy.deepcopy(self.current_state.get('state', {}))
         
         try:
             response = execute_api(
                 "message_via_tor",
                 "POST",
                 "/tick",
-                data={"db": self.db}
+                data={}
             )
             
             if response.get("status") == 200:
-                self.db = response["body"]["db"]
-                after_state = copy.deepcopy(self.db.get('state', {}))
+                # Refresh state to see the changes
+                self.refresh_state()
+                after_state = copy.deepcopy(self.current_state.get('state', {}))
                 self.record_change("tick", before_state, after_state)
                 self.update_displays()
         except Exception as e:
             self.record_change(f"tick ERROR: {str(e)}", before_state, before_state)
             self.update_displays()
     
-    def action_reset(self) -> None:
-        """Reset state"""
-        before_state = copy.deepcopy(self.db.get('state', {}))
-        self.db = {
-            'state': {
-                'identities': [],
-                'peers': [],
-                'messages': [],
-                'outgoing': []
-            },
-            'eventStore': []
-        }
-        self.state_changes = []
-        self.selected_change = 0
-        self.record_change("reset", before_state, {})
-        self.update_displays()
+    # Reset action removed - database resets on startup
     
     async def handle_command(self, identity_num: int, command: str) -> None:
         """Handle slash commands."""
@@ -389,36 +588,53 @@ class MessageViaTorDemo(App):
             if not args:
                 messages_log.write("[red]Usage: /create <name>[/red]")
                 return
-            await self.create_identity(identity_num, args)
-            messages_log.write(f"[green]Created identity: {args}[/green]")
+            response = await self.create_identity(identity_num, args)
+            if response.get('status') == 201:
+                # Show success and identity info
+                body = response.get('body', {})
+                messages_log.write(f"[green]Identity created successfully![/green]")
+                messages_log.write(f"[cyan]Identity ID: {body.get('identityId', 'N/A')[:32]}...[/cyan]")
+                messages_log.write(f"[cyan]Name: {args}[/cyan]")
+            else:
+                messages_log.write(f"[red]Failed - Status: {response.get('status')}[/red]")
+                messages_log.write(f"[red]Error: {response.get('body', {}).get('error', 'Unknown error')}[/red]")
             
         elif cmd == "/invite":
             # Generate an invite link for current identity
             identity_selected = getattr(self, f"identity{identity_num}_selected")
-            if identity_selected < 0:
-                messages_log.write("[red]Create an identity first with /create <name>[/red]")
-                return
             identities = self.get_identities()
+            
+            messages_log.write(f"[dim]Debug: Panel {identity_num} selected index: {identity_selected}, total identities: {len(identities)}[/dim]")
+            
+            if identity_selected < 0:
+                messages_log.write("[red]No identity selected. Create an identity first with /create <name>[/red]")
+                return
             if identity_selected >= len(identities):
-                messages_log.write("[red]No identity selected[/red]")
+                messages_log.write(f"[red]Invalid selection: index {identity_selected} but only {len(identities)} identities exist[/red]")
+                messages_log.write("[yellow]Try /refresh to update the identity list[/yellow]")
                 return
             identity = identities[identity_selected]
+            messages_log.write(f"[dim]Using identity: {identity['name']} (pubkey: {identity['pubkey'][:16]}...)[/dim]")
             # Generate invite link using the invite API
             try:
                 response = execute_api(
                     "message_via_tor",
                     "POST",
-                    f"/identities/{identity['id']}/invite",
-                    data={"db": self.db}
+                    f"/identities/{identity['pubkey']}/invite",
+                    data={}
                 )
+                
                 if response.get("status") in [200, 201]:
                     # Look for inviteLink (API now converts to camelCase)
-                    invite_link = response["body"].get("inviteLink", "Error generating invite")
+                    invite_link = response["body"].get("inviteLink")
+                    if not invite_link:
+                        messages_log.write(f"[red]Error: No invite link in response[/red]")
+                        messages_log.write(f"[dim]Response: {json.dumps(response.get('body', {}), indent=2)}[/dim]")
+                        return
                     
                     # Store the link for this identity
-                    self.last_invite_links[identity['id']] = invite_link
+                    self.last_invite_links[identity['pubkey']] = invite_link
                     
-                    messages_log.write(f"[green]Your invite link has been generated![/green]")
                     messages_log.write("")  # Empty line
                     
                     # Remove any existing invite link display first
@@ -485,8 +701,8 @@ class MessageViaTorDemo(App):
                 return
             identity = identities[identity_selected]
             
-            if identity['id'] in self.last_invite_links:
-                invite_link = self.last_invite_links[identity['id']]
+            if identity['pubkey'] in self.last_invite_links:
+                invite_link = self.last_invite_links[identity['pubkey']]
                 
                 # Remove any existing invite link display
                 try:
@@ -506,6 +722,33 @@ class MessageViaTorDemo(App):
             else:
                 messages_log.write("[yellow]No invite link generated yet. Use /invite to create one.[/yellow]")
                 
+        elif cmd == "/refresh":
+            # Manually refresh state
+            messages_log.write("[yellow]Refreshing state...[/yellow]")
+            self.refresh_state()
+            self.update_displays()
+            messages_log.write("[green]State refreshed![/green]")
+            
+        elif cmd == "/debug":
+            # Show debug information about current state
+            messages_log.write("[bold cyan]Debug Information:[/bold cyan]")
+            messages_log.write("")
+            
+            # Show current identity selection
+            identity_selected = getattr(self, f"identity{identity_num}_selected")
+            messages_log.write(f"[yellow]Panel {identity_num} selected index: {identity_selected}[/yellow]")
+            
+            # Show all identities
+            identities = self.get_identities()
+            messages_log.write(f"[yellow]Total identities: {len(identities)}[/yellow]")
+            for i, identity in enumerate(identities):
+                messages_log.write(f"  [{i}] name={identity['name']}, pubkey={identity['pubkey'][:16]}...")
+            
+            # Show raw state
+            messages_log.write("")
+            messages_log.write("[yellow]Raw current_state:[/yellow]")
+            messages_log.write(json.dumps(self.current_state, indent=2))
+            
         elif cmd == "/help":
             messages_log.write("[bold cyan]Available commands:[/bold cyan]")
             messages_log.write("")
@@ -513,6 +756,8 @@ class MessageViaTorDemo(App):
             messages_log.write("[green]/invite[/green] - Generate an invite link to share with others")
             messages_log.write("[green]/link[/green] - Show the last generated invite link")
             messages_log.write("[green]/join <name> <invite-link>[/green] - Join a group using an invite link")
+            messages_log.write("[green]/refresh[/green] - Manually refresh state from database")
+            messages_log.write("[green]/debug[/green] - Show debug information about current state")
             messages_log.write("[green]/help[/green] - Show this help message")
             messages_log.write("")
             messages_log.write("[dim]Regular messages: Just type and press Enter to send[/dim]")
@@ -522,9 +767,9 @@ class MessageViaTorDemo(App):
             messages_log.write(f"[red]Unknown command: {cmd}[/red]")
             messages_log.write("Type /help for available commands")
     
-    async def create_identity(self, identity_num: int, name: str) -> None:
-        """Create a new identity."""
-        before_state = copy.deepcopy(self.db.get('state', {}))
+    async def create_identity(self, identity_num: int, name: str) -> dict:
+        """Create a new identity. Returns the API response."""
+        before_state = copy.deepcopy(self.current_state.get('state', {}))
         
         try:
             response = execute_api(
@@ -533,40 +778,48 @@ class MessageViaTorDemo(App):
                 "/identities",
                 data={
                     "name": name,
-                    "db": self.db
+                    # No db needed - using persistent database
                 }
             )
             
             if response.get("status") == 201:
-                self.db = response["body"]["db"]
-                after_state = copy.deepcopy(self.db.get('state', {}))
+                # Get the created identity ID from the response
+                created_identity_id = response.get('body', {}).get('identityId')
+                
+                # Refresh state to see the changes
+                self.refresh_state()
+                after_state = copy.deepcopy(self.current_state.get('state', {}))
                 self.record_change(f"identity.create: {name}", before_state, after_state)
                 
                 # Set this identity as selected for the panel
                 identities = self.get_identities()
+                
+                # Debug output
+                messages_log = self.query_one(f"#messages{identity_num}", RichLog)
+                messages_log.write(f"[dim]Debug: Looking for ID {created_identity_id[:16]}...[/dim]")
+                messages_log.write(f"[dim]Debug: Found {len(identities)} identities after refresh[/dim]")
+                
+                found = False
                 for i, identity in enumerate(identities):
-                    if identity['name'] == name:
+                    messages_log.write(f"[dim]  [{i}] id={identity['id'][:16]}... name={identity['name']}[/dim]")
+                    # Match by ID instead of name since API might not return the name
+                    if identity['id'] == created_identity_id or identity['pubkey'] == created_identity_id:
                         setattr(self, f"identity{identity_num}_selected", i)
+                        messages_log.write(f"[dim]  ^^ Selected this one![/dim]")
+                        found = True
                         break
                 
+                if not found:
+                    messages_log.write(f"[yellow]Warning: Created identity not found in list![/yellow]")
+                
                 self.update_displays()
-            else:
-                # Show API error in message log
-                messages_log = self.query_one(f"#messages{identity_num}", RichLog)
-                messages_log.write(f"[red]API Error (status {response.get('status')}):[/red]")
-                error_body = response.get('body', {})
-                if isinstance(error_body, dict):
-                    error_msg = error_body.get('error', 'Unknown error')
-                else:
-                    error_msg = str(error_body)
-                messages_log.write(f"[red]{error_msg}[/red]")
+            
+            return response
                 
         except Exception as e:
-            # Show exception in message log
-            messages_log = self.query_one(f"#messages{identity_num}", RichLog)
-            messages_log.write(f"[red]Exception: {str(e)}[/red]")
             self.record_change(f"identity.create ERROR: {str(e)}", before_state, before_state)
             self.update_displays()
+            return {"status": 500, "body": {"error": str(e)}}
     
     async def join_with_invite(self, identity_num: int, name: str, invite_link: str) -> bool:
         """Join using an invite link."""
@@ -578,7 +831,7 @@ class MessageViaTorDemo(App):
             messages_log.write("[yellow]Identity already exists in this slot. Use an empty slot.[/yellow]")
             return False
             
-        before_state = copy.deepcopy(self.db.get('state', {}))
+        before_state = copy.deepcopy(self.current_state.get('state', {}))
         
         try:
             # Call the join API endpoint with the invite link and name
@@ -589,13 +842,14 @@ class MessageViaTorDemo(App):
                 data={
                     "name": name,
                     "inviteLink": invite_link,
-                    "db": self.db
+                    # No db needed - using persistent database
                 }
             )
             
             if response.get("status") == 201:
-                self.db = response["body"]["db"]
-                after_state = copy.deepcopy(self.db.get('state', {}))
+                # Refresh state to see the changes
+                self.refresh_state()
+                after_state = copy.deepcopy(self.current_state.get('state', {}))
                 self.record_change(f"identity.join: {name}", before_state, after_state)
                 
                 # Get the newly created identity and set it as selected
@@ -649,5 +903,17 @@ class MessageViaTorDemo(App):
 
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description='Message via Tor Demo')
+    parser.add_argument('--no-reset', action='store_true', 
+                      help='Do not reset database on startup (preserve state)')
+    parser.add_argument('--db-path', default='demo.db',
+                      help='Path to database file (default: demo.db)')
+    args = parser.parse_args()
+    
+    # Configure the app based on CLI arguments
+    MessageViaTorDemo.RESET_DB = not args.no_reset
+    
     app = MessageViaTorDemo()
+    app.db_path = args.db_path  # Override db path if specified
     app.run()

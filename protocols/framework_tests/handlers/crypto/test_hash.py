@@ -1,6 +1,6 @@
 from core.crypto import hash
 
-def execute(params, identity, db):
+def execute(params, db):
     """Test hash operations with blake2b"""
     data = params["data"]
     

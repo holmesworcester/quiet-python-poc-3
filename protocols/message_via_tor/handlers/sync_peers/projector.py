@@ -24,33 +24,40 @@ def project(db, envelope, time_now_ms):
         db['state'] = {}
     
     if 'outgoing' not in db['state']:
-        db['state']['outgoing'] = []
+        state = db['state']
+        state['outgoing'] = []
+        db['state'] = state
     
     # Get peers known by the identity that received this sync request
     peers = db['state'].get('peers', [])
     known_peers = [p for p in peers if p.get('received_by') == received_by]
     
     # Send peer events for peers known by this identity
-    for peer in known_peers:
-        # Create peer event data to send
-        peer_event = {
-            'type': 'peer',
-            'pubkey': peer.get('pubkey'),
-            'name': peer.get('name')
-        }
-        
-        # Create outgoing envelope for this event
-        outgoing = {
-            'recipient': sender,
-            'data': peer_event
-        }
-        db['state']['outgoing'].append(outgoing)
+    if known_peers:
+        state = db['state']
+        for peer in known_peers:
+            # Create peer event data to send
+            peer_event = {
+                'type': 'peer',
+                'pubkey': peer.get('pubkey'),
+                'name': peer.get('name')
+            }
+            
+            # Create outgoing envelope for this event
+            outgoing = {
+                'recipient': sender,
+                'data': peer_event
+            }
+            state['outgoing'].append(outgoing)
+        db['state'] = state  # Trigger persistence!
     
     # Store the sync request in eventStore
     if 'eventStore' not in db:
         db['eventStore'] = []
     
-    # Append the event data directly
-    db['eventStore'].append(data)
+    # Get eventStore, modify it, and reassign to trigger persistence
+    event_store = db['eventStore']
+    event_store.append(data)
+    db['eventStore'] = event_store  # Trigger persistence!
     
     return db

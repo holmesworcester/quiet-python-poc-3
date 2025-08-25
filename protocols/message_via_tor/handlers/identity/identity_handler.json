@@ -51,8 +51,8 @@
           "then": {
             "return": {
               "api_response": {
-                "return": "Identity created",
-                "identity": {"pubkey": "*", "name": "Bob"}
+                "identityId": "*",
+                "publicKey": "*"
               },
               "newEvents": [
                 {"type": "identity", "pubkey": "*", "privkey": "*", "name": "Bob"},
@@ -82,10 +82,9 @@
           "then": {
             "return": {
               "api_response": {
-                "return": "Found 2 identities",
                 "identities": [
-                  {"pubkey": "pub1", "name": "Alice"},
-                  {"pubkey": "pub2", "name": "Bob"}
+                  {"identityId": "pub1", "publicKey": "pub1", "name": "Alice"},
+                  {"identityId": "pub2", "publicKey": "pub2", "name": "Bob"}
                 ]
               }
             }
@@ -106,8 +105,7 @@
                 ]
               }
             },
-            "params": {},
-            "identity": "pub123"
+            "params": {"identityId": "pub123"}
           },
           "then": {
             "return": {
@@ -180,6 +178,43 @@
                 "peers": [
                   {"pubkey": "*", "name": "Alice", "joined_via": "direct", "added_at": "*", "received_by": "*"},
                   {"pubkey": "pub456", "name": "Bob", "joined_via": "invite", "added_at": "*", "received_by": "*"}
+                ]
+              }
+            }
+          }
+        },
+        {
+          "description": "Join sends peer event to inviter via outgoing queue",
+          "given": {
+            "db": {},
+            "params": {
+              "inviteLink": "message-via-tor://invite/eyJuYW1lIjoiQWxpY2UiLCJwZWVyIjoicHViMTIzIn0=",
+              "name": "Charlie"
+            }
+          },
+          "then": {
+            "return": {
+              "api_response": {
+                "return": "Joined network via invite",
+                "identity": {
+                  "pubkey": "*",
+                  "name": "Charlie"
+                },
+                "peer": {"pubkey": "pub123", "name": "Alice"}
+              }
+            },
+            "db": {
+              "state": {
+                "outgoing": [
+                  {
+                    "recipient": "pub123",
+                    "data": {
+                      "type": "peer",
+                      "pubkey": "*",
+                      "name": "Charlie",
+                      "joined_via": "direct"
+                    }
+                  }
                 ]
               }
             }

@@ -1,4 +1,4 @@
-def execute(input_data, identity, db):
+def execute(input_data, db):
     """
     Retry pending missing key envelopes when key_map has changed.
     This job command checks if any pending entries now have available keys.

@@ -1,6 +1,6 @@
 from core.crypto import encrypt, decrypt, hash
 
-def execute(params, identity, db):
+def execute(params, db):
     """Test encrypt and decrypt operations"""
     data = params["data"]
     
@@ -8,7 +8,8 @@ def execute(params, identity, db):
     if "key" in params:
         key = params["key"]
     else:
-        # Generate a key from identity
+        # Generate a key from identity if provided in params
+        identity = params.get("identity", "default")
         key = hash(f"{identity}_test_key")[:64]  # 32 bytes hex
     
     # Encrypt the data

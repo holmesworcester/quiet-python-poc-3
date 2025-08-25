@@ -1,4 +1,4 @@
-def execute(input_data, identity, db):
+def execute(input_data, db):
     """
     Creates a sync-request event given a sender peer
     """

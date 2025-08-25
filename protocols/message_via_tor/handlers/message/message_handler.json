@@ -217,7 +217,16 @@
       "tests": [
         {
           "description": "Message with no known peers",
-          "given": {"db": {"state": {"peers": []}}, "params": {"text": "Hello"}, "env": {"CRYPTO_MODE": "dummy"}},
+          "given": {
+            "db": {
+              "state": {
+                "peers": [],
+                "identities": [{"pubkey": "test_pubkey", "privkey": "test_privkey", "name": "Test"}]
+              }
+            }, 
+            "params": {"text": "Hello", "senderId": "test_pubkey"}, 
+            "env": {"CRYPTO_MODE": "dummy"}
+          },
           "then": {"return": {"api_response": {"return": "Message broadcast to 0 peers", "messageId": "*", "sentTo": 0}, "newEvents": [{"type": "message", "text": "Hello", "sig": "*"}]}}
         },
         {
@@ -225,15 +234,13 @@
           "given": {
             "db": {
               "state": {
-                "identities": {
-                  "sender": {
-                    "keypair": {
-                      "public": "dummy_pubkey_sender",
-                      "private": "dummy_privkey_sender"
-                    },
+                "identities": [
+                  {
+                    "pubkey": "dummy_pubkey_sender",
+                    "privkey": "dummy_privkey_sender",
                     "name": "Sender"
                   }
-                },
+                ],
                 "peers": [
                   {"pubkey": "peer1", "name": "Peer 1", "received_by": "dummy_pubkey_sender"},
                   {"pubkey": "peer2", "name": "Peer 2", "received_by": "dummy_pubkey_sender"},
@@ -241,8 +248,7 @@
                 ]
               }
             }, 
-            "params": {"text": "Hello peers"},
-            "identity": "sender",
+            "params": {"text": "Hello peers", "senderId": "dummy_pubkey_sender"},
             "env": {"CRYPTO_MODE": "dummy"}
           },
           "then": {
@@ -268,15 +274,13 @@
           "given": {
             "db": {
               "state": {
-                "identities": {
-                  "alice": {
-                    "keypair": {
-                      "public": "dummy_pubkey_alice",
-                      "private": "dummy_privkey_alice"
-                    },
+                "identities": [
+                  {
+                    "pubkey": "dummy_pubkey_alice",
+                    "privkey": "dummy_privkey_alice",
                     "name": "Alice"
                   }
-                },
+                ],
                 "peers": [
                   {"pubkey": "bob_pub", "name": "Bob", "received_by": "dummy_pubkey_alice"},
                   {"pubkey": "charlie_pub", "name": "Charlie", "received_by": "dummy_pubkey_alice"}
@@ -286,9 +290,9 @@
             },
             "params": {
               "text": "Hello via ticks",
+              "senderId": "dummy_pubkey_alice",
               "time_now_ms": 1000
             },
-            "identity": "alice",
             "env": {"CRYPTO_MODE": "dummy"}
           },
           "ticks": 2,

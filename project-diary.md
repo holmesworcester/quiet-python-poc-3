@@ -1,4 +1,6 @@
-todo: incoming_handler.json has bad smell
+todo: 
+- incoming_handler.json has bad smell
+- the way we're using sqlite is weird. i think handle should be using transactions e.g.
 
 Notes:
 
@@ -24,3 +26,5 @@ Notes:
 - it seems that when we get to blocking/unblocking, there could be a protocol-generic way of doing it: every event has an event-id (hash of signed plaintext event) and there's a blocked-by table that lists the event-id that's blocked and the event-id that's blocking, and whenever we newly project an event we re-handle all the events in blocked. that way there's a first class "mark blocked" function, a first class "get id" function, and everything gets unblocking for free. we have to think about cycles but i don't think there are any because once an event gets projected it's in, and that won't happen again. and we make all this atomic. 
 - keeping protocol-specific stuff like identity out of test runner is a real battle with the llm. one instruction could be, we are only working on framework and not protocol, or vice versa.  
 - yaml seems more readable than json and it has variables which are good for tests. and you can mess with the format more and add comments and linebreaks etc. probably that's best
+- i don't know how to make a closed loop that lets the llm use the demo the way i would 
+- 

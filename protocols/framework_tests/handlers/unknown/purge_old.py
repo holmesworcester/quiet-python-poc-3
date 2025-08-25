@@ -1,4 +1,4 @@
-def execute(input_data, identity, db):
+def execute(input_data, db):
     """
     Purge old unknown events to prevent unbounded growth.
     Removes events older than the specified cutoff time.

@@ -1,22 +1,21 @@
 from datetime import datetime
 
-def execute(input_data, identity, db):
+def execute(input_data, db):
     """
     Create a new message event command (simplified version).
     Returns newlyCreatedEvents and any other return values.
     """
-    # Support both "content" and "text" fields for compatibility
-    content = input_data.get("content") or input_data.get("text")
-    if not content:
-        raise ValueError("Message content is required")
+    # Get text field
+    text = input_data.get("text")
+    if not text:
+        raise ValueError("Message text is required")
     
     # Create plaintext envelope
     envelope = {
         "envelope": "plaintext",
         "data": {
             "type": "message",
-            "content": content,
-            "text": content,  # Include both for compatibility
+            "content": text,
             "timestamp": datetime.utcnow().isoformat() + "Z"
         },
         "metadata": {
@@ -31,7 +30,7 @@ def execute(input_data, identity, db):
     
     return {
         "newlyCreatedEvents": [envelope],
-        "new_events": [{"type": "message", "text": content, "sender": "*"}],
+        "new_events": [{"type": "message", "text": text, "sender": "*"}],
         "return": "Created",
         "messageId": f"msg-{datetime.utcnow().timestamp()}"
     }

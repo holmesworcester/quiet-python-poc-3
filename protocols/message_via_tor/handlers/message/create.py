@@ -1,9 +1,9 @@
-from core.crypto import sign, get_keypair
+from core.crypto import sign
 import json
 import time
 
 
-def execute(input_data, identity, db):
+def execute(input_data, db):
     """
     Create a new message event command.
     Creates canonical signed event and broadcasts it to all known peers of the identity.
@@ -13,35 +13,26 @@ def execute(input_data, identity, db):
     if not text:
         raise ValueError("Message text is required")
     
-    # Get keypair for signing
-    # First check if we have this identity stored (identity might be a pubkey)
+    # Get sender identity from input
+    sender_id = input_data.get("senderId")
+    if not sender_id:
+        raise ValueError("Sender identity (senderId) is required")
+    
+    # Find the identity in the database
     identities = db.get('state', {}).get('identities', [])
     stored_identity = None
     
-    # Handle both list and dict formats
-    if isinstance(identities, list):
-        for id_data in identities:
-            if id_data.get('pubkey') == identity:
-                stored_identity = id_data
-                break
-    elif isinstance(identities, dict) and identity in identities:
-        # Old test format: identities as dict with identity name as key
-        id_data = identities[identity]
-        if 'keypair' in id_data:
-            stored_identity = {
-                'pubkey': id_data['keypair']['public'],
-                'privkey': id_data['keypair']['private']
-            }
+    for id_data in identities:
+        if id_data.get('pubkey') == sender_id:
+            stored_identity = id_data
+            break
     
-    if stored_identity:
-        # Use the stored keys directly
-        private_key = stored_identity['privkey']
-        public_key = stored_identity['pubkey']
-    else:
-        # Generate keypair (for backward compatibility with tests)
-        keypair = get_keypair(identity)
-        private_key = keypair["private"]
-        public_key = keypair["public"]
+    if not stored_identity:
+        raise ValueError(f"Identity not found: {sender_id}")
+    
+    # Use the stored keys
+    private_key = stored_identity['privkey']
+    public_key = stored_identity['pubkey']
     
     # Get current time from input or use current time
     time_now_ms = input_data.get("time_now_ms", int(time.time() * 1000))

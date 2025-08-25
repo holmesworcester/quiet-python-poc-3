@@ -35,12 +35,12 @@
                 {
                   "envelope": true,
                   "data": {"type": "message", "text": "Hello", "sender": "peer2"},
-                  "metadata": {"origin": "network", "receivedAt": "*", "selfGenerated": false}
+                  "metadata": {"origin": "network", "receivedAt": "*", "selfGenerated": false, "received_by": "peer1"}
                 },
                 {
                   "envelope": true,
                   "data": {"type": "sync_peers", "sender": "peer1"},
-                  "metadata": {"origin": "network", "receivedAt": "*", "selfGenerated": false}
+                  "metadata": {"origin": "network", "receivedAt": "*", "selfGenerated": false, "received_by": "peer2"}
                 }
               ]
             }

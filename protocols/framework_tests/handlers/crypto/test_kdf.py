@@ -1,6 +1,6 @@
 from core.crypto import kdf
 
-def execute(params, identity, db):
+def execute(params, db):
     """Test key derivation function"""
     password = params["password"]
     salt = params.get("salt")  # Optional
