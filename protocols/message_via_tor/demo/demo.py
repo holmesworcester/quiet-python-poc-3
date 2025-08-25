@@ -23,16 +23,23 @@ from textual.timer import Timer
 # Add the root directory to path for core imports
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
-from core.api import execute_api as _execute_api
+from core.api import execute_api
 
 # Change to project root directory for API calls
 os.chdir(project_root)
 
 # Store reference to original execute_api
-original_execute_api = _execute_api
+original_execute_api = execute_api
 
 class MessageViaTorDemo(App):
     """A Textual app to demo the message_via_tor protocol."""
+    
+    # Set title to empty to remove title bar
+    TITLE = ""
+    # Disable sub-title
+    SUB_TITLE = ""
+    # Disable the header completely
+    ENABLE_COMMAND_PALETTE = False
     
     # Class variable to control database reset
     RESET_DB = True
@@ -45,6 +52,11 @@ class MessageViaTorDemo(App):
         grid-gutter: 1;
     }
     
+    /* Remove any loading bars */
+    LoadingIndicator {
+        display: none !important;
+    }
+    
     #controls {
         column-span: 2;
         height: 3;
@@ -52,10 +64,24 @@ class MessageViaTorDemo(App):
         background: $surface;
         border: solid $primary;
         layout: horizontal;
+        padding: 0 1;
     }
     
     #controls Button {
         margin: 0 1;
+        min-width: 10;
+        width: auto;
+        height: 3;
+    }
+    
+    #tick-btn {
+        background: $success;
+        color: $text;
+    }
+    
+    #refresh-btn {
+        background: $warning;  
+        color: $text;
     }
     
     #identities-container {
@@ -119,7 +145,8 @@ class MessageViaTorDemo(App):
     """
     
     BINDINGS = [
-        ("t", "tick", "Tick"),
+        ("ctrl+t", "tick", "Tick"),
+        ("ctrl+r", "refresh", "Refresh"),
         ("tab", "switch_identity", "Switch Identity"),
         ("q", "quit", "Quit"),
         ("ctrl+c", "quit", "Quit"),
@@ -156,17 +183,20 @@ class MessageViaTorDemo(App):
         # Event collector for real-time event display
         self.collected_events = []  # List of events as they happen
         self.event_counter = 0
+        
+        # Monkey-patch execute_api to collect events
+        self._setup_event_collection()
     
     
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
-        yield Header()
+        # Removed Header() - we have our own controls
         
-        # Control bar at the top
+        # Control bar at the top - ensure all buttons are visible
         with Horizontal(id="controls"):
             yield Button("▶️ Play", id="play-pause-btn", variant="primary")
-            yield Button("⏯️ Tick", id="tick-btn")
-            yield Button("🔄 Refresh", id="refresh-btn")
+            yield Button("⏯️ Tick", id="tick-btn", variant="success")
+            yield Button("🔄 Refresh", id="refresh-btn", variant="warning")
         
         # Left side - 4 identity panels in a 2x2 grid
         with Container(id="identities-container"):
@@ -249,6 +279,12 @@ class MessageViaTorDemo(App):
     def auto_tick(self) -> None:
         """Called by timer when playing"""
         self.action_tick()
+    
+    def action_refresh(self) -> None:
+        """Handle refresh action from keyboard shortcut"""
+        self.refresh_state()
+        self.update_displays()
+        self.update_event_log()
     
     def load_existing_identities(self):
         """Load existing identities from database on startup."""
@@ -404,74 +440,137 @@ class MessageViaTorDemo(App):
         # Also update event log
         self.update_event_log()
     
-    def update_event_log(self):
-        """Update the event log display with all events and their envelopes"""
+    def _setup_event_collection(self):
+        """Set up event collection by wrapping execute_api"""
+        demo_instance = self
+        
+        def execute_api_with_collection(protocol, method, path, data=None, params=None):
+            """Wrapped version of execute_api that collects events"""
+            # Call original API - pass all parameters
+            response = original_execute_api(protocol, method, path, data, params)
+            
+            # Collect events from response
+            if response.get('status') in [200, 201]:
+                body = response.get('body', {})
+                
+                # Check for newEvents in response (from commands)
+                if 'newEvents' in body:
+                    for event in body['newEvents']:
+                        demo_instance._collect_event(event, 'command', path)
+                
+                # For tick operations, collect job information
+                if path == '/tick' and 'jobsRun' in body:
+                    demo_instance._collect_event({
+                        'type': 'tick',
+                        'jobsRun': body.get('jobsRun', 0),
+                        'eventsProcessed': body.get('eventsProcessed', 0)
+                    }, 'system', path)
+            
+            return response
+        
+        # Replace execute_api in core.api module
+        import core.api
+        core.api.execute_api = execute_api_with_collection
+    
+    def _collect_event(self, event, source, operation):
+        """Collect an event for display"""
+        self.event_counter += 1
+        self.collected_events.append({
+            'id': self.event_counter,
+            'timestamp': time.time(),
+            'source': source,
+            'operation': operation,
+            'event': event
+        })
+        
+        # Keep only last 100 events in memory
+        if len(self.collected_events) > 100:
+            self.collected_events = self.collected_events[-100:]
+        
+        # Update display immediately
+        self.call_later(self.update_event_log_display)
+    
+    def update_event_log_display(self):
+        """Update just the event log display with collected events"""
         try:
             event_log = self.query_one("#event-log-display", RichLog)
             event_log.clear()
             
-            # Get all events from the database with full envelope information
+            # Also show events from the database event store for completeness
             from core.db import create_db
             db = create_db(self.db_path)
+            db_events = db.get('eventStore', [])
             
-            # Get both event store and incoming events for complete view
+            # Combine collected events with a sample of recent DB events
             all_events = []
             
-            # Add events from eventStore (these have been processed)
-            event_store = db.get('eventStore', [])
-            for i, event in enumerate(event_store):
+            # Add collected events (from API responses)
+            for event_info in self.collected_events:
                 all_events.append({
-                    'index': i,
-                    'source': 'eventStore',
-                    'data': event,
-                    'envelope': None  # EventStore doesn't preserve envelopes
+                    'source': 'api',
+                    'info': event_info
                 })
             
-            # Add incoming events (these have full envelopes)
-            incoming = db.get('incoming', [])
-            for i, envelope in enumerate(incoming):
+            # Add recent DB events (last 20)
+            for envelope in db_events[-20:]:
                 all_events.append({
-                    'index': len(event_store) + i,
-                    'source': 'incoming',
-                    'data': envelope.get('data', {}),
+                    'source': 'db',
                     'envelope': envelope
                 })
             
-            # Show newest first
-            all_events.reverse()
+            # Sort by timestamp/id and show newest first
+            all_events.sort(key=lambda x: x.get('info', {}).get('id', 0) if x['source'] == 'api' else 0, reverse=True)
             
-            # Display events
-            for event_info in all_events[:50]:  # Show last 50 events
-                event_log.write(Text(f"\n[Event #{event_info['index']} from {event_info['source']}]", style="bold yellow"))
-                
-                # Show event type and key fields
-                data = event_info['data']
-                event_type = data.get('type', 'unknown')
-                event_log.write(Text(f"Type: {event_type}", style="cyan"))
-                
-                # Show key fields based on event type
-                if event_type == 'message':
-                    event_log.write(f"  Text: {data.get('text', 'N/A')[:50]}...")
-                    event_log.write(f"  Sender: {data.get('sender', 'N/A')[:20]}...")
-                elif event_type == 'peer':
-                    event_log.write(f"  Pubkey: {data.get('pubkey', 'N/A')[:20]}...")
-                    event_log.write(f"  Name: {data.get('name', 'N/A')}")
-                elif event_type == 'identity':
-                    event_log.write(f"  Pubkey: {data.get('pubkey', 'N/A')[:20]}...")
-                    event_log.write(f"  Name: {data.get('name', 'N/A')}")
-                
-                # Show envelope metadata if available
-                if event_info['envelope']:
-                    metadata = event_info['envelope'].get('metadata', {})
-                    event_log.write(Text("Envelope metadata:", style="green"))
-                    event_log.write(f"  received_by: {metadata.get('received_by', 'N/A')[:20]}...")
-                    event_log.write(f"  selfGenerated: {metadata.get('selfGenerated', 'N/A')}")
-                    event_log.write(f"  origin: {metadata.get('origin', 'N/A')}")
-                    if 'recipient' in event_info['envelope']:
-                        event_log.write(f"  recipient: {event_info['envelope']['recipient'][:20]}...")
+            # Show events in reverse order (newest first)
+            for item in all_events[:50]:  # Show last 50
+                if item['source'] == 'api':
+                    # Show collected event from API
+                    event_info = item['info']
+                    event_log.write(Text(f"\n[Event #{event_info['id']} - API/{event_info['source']}]", style="bold yellow"))
+                    event_log.write(f"Operation: {event_info['operation']}")
+                    
+                    event = event_info['event']
+                    event_type = event.get('type', 'unknown')
+                    event_log.write(Text(f"Type: {event_type}", style="cyan"))
+                    
+                    # Show key fields based on event type
+                    if event_type == 'message':
+                        event_log.write(f"  Text: {event.get('text', 'N/A')[:50]}...")
+                        event_log.write(f"  Sender: {event.get('sender', 'N/A')[:20]}...")
+                    elif event_type == 'peer':
+                        event_log.write(f"  Pubkey: {event.get('pubkey', 'N/A')[:20]}...")
+                        event_log.write(f"  Name: {event.get('name', 'N/A')}")
+                    elif event_type == 'identity':
+                        event_log.write(f"  Pubkey: {event.get('pubkey', 'N/A')[:20]}...")
+                        event_log.write(f"  Name: {event.get('name', 'N/A')}")
+                    elif event_type == 'tick':
+                        event_log.write(f"  Jobs run: {event.get('jobsRun', 0)}")
+                        event_log.write(f"  Events processed: {event.get('eventsProcessed', 0)}")
+                else:
+                    # Show event from database
+                    envelope = item['envelope']
+                    metadata = envelope.get('metadata', {})
+                    data = envelope.get('data', {})
+                    
+                    event_id = metadata.get('eventId', 'no-id')
+                    event_id_display = event_id[:8] + '...' if event_id != 'no-id' else 'no-id'
+                    event_log.write(Text(f"\n[Event from DB - {event_id_display}]", style="bold green"))
+                    event_log.write(f"Type: {data.get('type', 'unknown')}")
+                    event_log.write(f"Received by: {metadata.get('received_by', 'N/A')[:20]}...")
+                    event_log.write(f"Self-generated: {metadata.get('selfGenerated', False)}")
+                    
+                    # Show event-specific data
+                    if data.get('type') == 'message':
+                        event_log.write(f"  Text: {data.get('text', 'N/A')[:50]}...")
+                    elif data.get('type') == 'peer':
+                        event_log.write(f"  Name: {data.get('name', 'N/A')}")
                 
         except Exception as e:
-            pass  # Silently ignore errors in event log update
+            pass  # Silently ignore errors
+    
+    def update_event_log(self):
+        """Update the event log display - now just calls the display update"""
+        self.update_event_log_display()
     
     def record_change(self, operation, before_state, after_state):
         """Record a state change"""
