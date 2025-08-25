@@ -47,7 +47,7 @@ def project(db, envelope, time_now_ms):
     
     # Get eventStore, modify it, and reassign to trigger persistence
     event_store = db['eventStore']
-    event_store.append(data)
+    event_store.append(envelope)  # Store full envelope, not just data
     db['eventStore'] = event_store  # This triggers persistence!
     
     return db

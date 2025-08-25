@@ -112,5 +112,6 @@ def execute(input_data, db):
                 "name": peer_name
             }
         },
-        "newEvents": all_events
+        "newEvents": all_events,
+        "db": db  # Must return the updated db
     }

@@ -1,12 +1,34 @@
+"""
+Event handling with transaction support.
+
+Key changes:
+- Each event is processed in its own transaction by default
+- Failed projections automatically rollback
+- Batch processing available for tick operations
+- 'blocked' list replaced with logging
+"""
 import importlib.util
 import os
+import logging
 from core.handler_discovery import build_handler_map, load_handler_config
 
+# Set up logging
+logger = logging.getLogger(__name__)
 
-def handle(db, envelope, time_now_ms):
+
+def handle(db, envelope, time_now_ms, auto_transaction=True):
     """
     Route envelopes to appropriate handlers based on type or error state.
+    
+    Args:
+        db: Database instance
+        envelope: Event envelope to process
+        time_now_ms: Current timestamp in milliseconds
+        auto_transaction: If True, wrap processing in a transaction
     """
+    if auto_transaction and hasattr(db, 'begin_transaction'):
+        db.begin_transaction()
+    
     try:
         # Check for error in metadata (missing key scenario)
         if 'error' in envelope.get('metadata', {}):
@@ -29,11 +51,10 @@ def handle(db, envelope, time_now_ms):
         if not event_type:
             handler_name = handler_map.get('unknown')
             if not handler_name:
-                # If no unknown handler, drop the event by adding to blocked
-                db.setdefault('blocked', []).append({
-                    'envelope': envelope,
-                    'error': 'Validation failed: unknown type'
-                })
+                # Log error and rollback
+                logger.error(f"No handler for event with no type: {envelope}")
+                if auto_transaction and hasattr(db, 'rollback'):
+                    db.rollback()
                 return db
             event_type = 'unknown'
         else:
@@ -48,11 +69,10 @@ def handle(db, envelope, time_now_ms):
             # Route to unknown handler for unrecognized types
             handler_name = handler_map.get('unknown')
             if not handler_name:
-                # If no unknown handler, add to blocked with expected error message
-                db.setdefault('blocked', []).append({
-                    'envelope': envelope,
-                    'error': 'Validation failed: unknown type'
-                })
+                # Log error and rollback
+                logger.error(f"No handler for event type '{event_type}': {envelope}")
+                if auto_transaction and hasattr(db, 'rollback'):
+                    db.rollback()
                 return db
         
         # Load handler config
@@ -60,10 +80,9 @@ def handle(db, envelope, time_now_ms):
         config = load_handler_config(handler_name, handler_base)
         
         if not config:
-            db.setdefault('blocked', []).append({
-                'envelope': envelope,
-                'error': f'Handler config not found for: {handler_name}'
-            })
+            logger.error(f'Handler config not found for: {handler_name}')
+            if auto_transaction:
+                db.rollback()
             return db
         
         # Load and run projector
@@ -82,16 +101,50 @@ def handle(db, envelope, time_now_ms):
             if result is not None:
                 db = result
             
+            # Commit if transaction successful
+            if auto_transaction and hasattr(db, 'commit'):
+                db.commit()
+            
         else:
-            db.setdefault('blocked', []).append({
-                'envelope': envelope,
-                'error': f'Projector not found for handler: {handler_name}'
-            })
+            logger.error(f'Projector not found for handler: {handler_name}')
+            if auto_transaction and hasattr(db, 'rollback'):
+                db.rollback()
             
     except Exception as e:
-        db.setdefault('blocked', []).append({
-            'envelope': envelope,
-            'error': str(e)
-        })
+        # Rollback on any error
+        if auto_transaction and hasattr(db, 'rollback'):
+            db.rollback()
+        
+        # Log error
+        logger.error(f"Failed to process event: {str(e)}", exc_info=True)
+        
+        raise  # Re-raise for caller to handle
     
     return db
+
+
+def handle_batch(db, envelopes, time_now_ms):
+    """
+    Process multiple events, each in its own transaction.
+    
+    Args:
+        db: Database instance
+        envelopes: List of event envelopes to process
+        time_now_ms: Current timestamp in milliseconds
+        
+    Returns:
+        Tuple of (db, successful_count, failed_count)
+    """
+    successful = 0
+    failed = 0
+    
+    for envelope in envelopes:
+        try:
+            db = handle(db, envelope, time_now_ms, auto_transaction=True)
+            successful += 1
+        except Exception as e:
+            failed += 1
+            # Individual failure doesn't stop batch processing
+            logger.warning(f"Failed to process event in batch: {e}")
+    
+    return db, successful, failed

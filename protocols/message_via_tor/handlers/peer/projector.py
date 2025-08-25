@@ -86,7 +86,7 @@ def project(db, envelope, time_now_ms):
     
     # Get eventStore, modify, and reassign
     event_store = db['eventStore']
-    event_store.append(data)
+    event_store.append(envelope)  # Store full envelope, not just data
     db['eventStore'] = event_store  # Trigger persistence!
     
     return db

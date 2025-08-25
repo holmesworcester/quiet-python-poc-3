@@ -103,10 +103,14 @@ def format_response(result, method, status_code=200):
     if isinstance(result, dict) and 'api_response' in result:
         # Use the explicit api_response
         response["body"] = result['api_response']
+        
+        # Include newEvents if they exist
+        if 'newEvents' in result:
+            response["body"]['newEvents'] = result['newEvents']
     elif isinstance(result, dict):
-        # Remove internal fields from response
+        # Remove internal fields from response but keep newEvents
         body = {k: v for k, v in result.items() 
-                if k not in ['db', 'newEvents', 'newlyCreatedEvents']}
+                if k not in ['db', 'newlyCreatedEvents']}
         
         # If handler wants to format response, let it do so
         # Otherwise return the cleaned result as-is

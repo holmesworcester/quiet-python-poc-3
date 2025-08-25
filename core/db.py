@@ -2,10 +2,28 @@
 SQLite-backed dictionary for persistent storage.
 Provides the same dict interface as before, but with persistence.
 Can use protocol-specific schema.sql files when available.
+
+Transaction Support:
+- begin_transaction(): Start a transaction, changes go to transaction cache
+- commit(): Apply all changes from transaction cache to database
+- rollback(): Discard all changes in transaction cache
+- with_retry(): Execute a function with automatic retry on database locks
+
+Example:
+    db = create_db()
+    db.begin_transaction()
+    try:
+        db['key'] = 'value'
+        db['state']['items'].append(item)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 """
 import json
 import os
 import sqlite3
+import time
 from collections.abc import MutableMapping
 from pathlib import Path
 from typing import Any, Iterator, Dict
@@ -30,8 +48,14 @@ class PersistentDict(MutableMapping):
         # Use timeout to avoid database locked errors
         self.conn = sqlite3.connect(db_path, timeout=10.0)
         self.conn.row_factory = sqlite3.Row
-        # Keep it vanilla - no special pragmas for now
-        # This ensures test behavior matches production
+        
+        # Set SERIALIZABLE isolation for full serialization
+        self.conn.execute("PRAGMA read_uncommitted = 0")
+        # Note: SQLite doesn't support true SERIALIZABLE, but we use EXCLUSIVE locks in transactions
+        
+        # Transaction state
+        self._in_transaction = False
+        self._transaction_cache = {}  # Stores changes during transaction
         
         # Initialize with protocol schema if available
         if protocol_name and db_path != ":memory:":
@@ -195,14 +219,22 @@ class PersistentDict(MutableMapping):
     
     def __getitem__(self, key):
         """Get item from dict"""
+        # Check transaction cache first
+        if self._in_transaction and key in self._transaction_cache:
+            return self._transaction_cache[key]
         if key not in self._cache:
             raise KeyError(key)
         return self._cache[key]
     
     def __setitem__(self, key, value):
         """Set item in dict and persist"""
-        self._cache[key] = value
-        self._persist_key(key, value)
+        if self._in_transaction:
+            # Store in transaction cache instead of committing
+            self._transaction_cache[key] = value
+        else:
+            # Current behavior: immediate commit
+            self._cache[key] = value
+            self._persist_key(key, value)
     
     def __delitem__(self, key):
         """Delete item from dict"""
@@ -211,6 +243,9 @@ class PersistentDict(MutableMapping):
     
     def __iter__(self):
         """Iterate over keys"""
+        if self._in_transaction:
+            # Include both cache keys and transaction keys
+            return iter(set(self._cache.keys()) | set(self._transaction_cache.keys()))
         return iter(self._cache)
     
     def __len__(self):
@@ -219,7 +254,57 @@ class PersistentDict(MutableMapping):
     
     def __contains__(self, key):
         """Check if key exists"""
+        if self._in_transaction and key in self._transaction_cache:
+            return True
         return key in self._cache
+    
+    def begin_transaction(self):
+        """Start a new transaction, disable auto-commit"""
+        if self._in_transaction:
+            raise RuntimeError("Transaction already in progress")
+        self._in_transaction = True
+        self._transaction_cache = {}
+        self.conn.execute("BEGIN EXCLUSIVE")  # Lock database for writes
+    
+    def commit(self):
+        """Commit all pending changes"""
+        if not self._in_transaction:
+            return
+            
+        try:
+            # Apply all changes from transaction cache
+            for key, value in self._transaction_cache.items():
+                self._cache[key] = value
+                self._persist_key(key, value)
+            
+            self.conn.commit()
+        finally:
+            self._transaction_cache = {}
+            self._in_transaction = False
+    
+    def rollback(self):
+        """Discard all pending changes"""
+        if not self._in_transaction:
+            return
+            
+        try:
+            self.conn.rollback()
+        finally:
+            self._transaction_cache = {}
+            self._in_transaction = False
+    
+    def with_retry(self, func, max_retries=3, timeout_ms=30000):
+        """Execute function with timeout and retry logic"""
+        for attempt in range(max_retries):
+            try:
+                # Set busy timeout for SQLite
+                self.conn.execute(f"PRAGMA busy_timeout = {timeout_ms}")
+                return func()
+            except sqlite3.OperationalError as e:
+                if "database is locked" in str(e) and attempt < max_retries - 1:
+                    time.sleep(0.1 * (attempt + 1))  # Exponential backoff
+                    continue
+                raise
     
     def _persist_key(self, key, value):
         """Persist a key to the database"""
@@ -298,6 +383,13 @@ class PersistentDict(MutableMapping):
     def to_dict(self):
         """Convert to plain dict for compatibility"""
         return dict(self._cache)
+    
+    def get(self, key, default=None):
+        """Get item with default value"""
+        try:
+            return self[key]
+        except KeyError:
+            return default
     
     def update_nested(self, key, updater_func):
         """

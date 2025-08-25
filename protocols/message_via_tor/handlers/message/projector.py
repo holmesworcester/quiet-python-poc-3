@@ -101,4 +101,13 @@ def project(db, envelope, time_now_ms):
     state['messages'].append(message)
     db['state'] = state
     
+    # Store in eventStore
+    if 'eventStore' not in db:
+        db['eventStore'] = []
+    
+    # Get eventStore, modify, and reassign
+    event_store = db['eventStore']
+    event_store.append(envelope)  # Store full envelope
+    db['eventStore'] = event_store
+    
     return db
