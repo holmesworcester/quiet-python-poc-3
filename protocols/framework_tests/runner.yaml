@@ -1,41 +1,83 @@
+# ============================================================================
+# Test Runner Configuration
+# ============================================================================
+# Purpose: Tests for test_runner.py functionality including JSON test execution,
+#          output chaining between tests, error handling with detailed logging,
+#          and test permutation support.
+#
+# Test Structure:
+# - Each test contains a 'given' section with input conditions
+# - A 'then' section with expected outcomes
+# - A 'description' explaining the test scenario
+# ============================================================================
+
 description: 'Tests for test_runner.py: executes JSON tests, chains outputs, handles errors with detailed logs/state, permutations.'
+
+# ============================================================================
+# Test Cases
+# ============================================================================
 tests:
+  # --------------------------------------------------------------------------
+  # Test 1: Basic Command Execution
+  # --------------------------------------------------------------------------
+  # Verifies that the test runner can execute a simple command test
+  # and properly return the expected events
   - given:
+      # Mock handler configuration for testing command execution
       mock_handler_json:
         commands:
           create:
             tests:
               - given:
                   params:
-                    text: Hello
+                    text: Hello  # Input parameter for create command
                 then:
                   return:
                     new_events:
-                      - text: Hello
+                      - text: Hello  # Expected output event
     then:
       results:
         - pass: true
           log: Executed create, returned new_events
     description: Basic execution of command test.
+
+  # --------------------------------------------------------------------------
+  # Test 2: Test Chaining
+  # --------------------------------------------------------------------------
+  # Demonstrates the ability to chain tests where the output of one test
+  # becomes the input of the next test in the sequence
   - given:
       chain:
+        # First test in chain: creates a message event
         - test: create message
-          output_to_next: new_events[0]
+          output_to_next: new_events[0]  # Pass first event to next test
+        
+        # Second test in chain: uses output from first test
         - test: project message
-          use_prior: newEvent
+          use_prior: newEvent  # Reference to output from previous test
     then:
       results:
         - pass: true
           log: 'Chained: created event, projected to state'
     description: 'Chains tests: uses output from first in second.'
+
+  # --------------------------------------------------------------------------
+  # Test 3: Error Handling with State Snapshot
+  # --------------------------------------------------------------------------
+  # Validates that the test runner properly captures and reports errors
+  # including a full database state snapshot for debugging
   - given:
+      # Mock test configuration with empty given/then sections
       mock_test:
         given: {}
         then:
           db: {}
+      
+      # Simulate an error condition during test execution
       simulate_error: Validation failed
     then:
       results:
         - pass: false
+          # Error message includes both the error details and full state
           error: 'Validation failed: details..., state: {full db snapshot}'
     description: Handles error with detailed log and state snapshot.

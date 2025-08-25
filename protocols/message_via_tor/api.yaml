@@ -1,4 +1,22 @@
+# ===========================================================================================
+# Message via Tor Protocol API Specification
+# ===========================================================================================
+# Purpose: Defines the OpenAPI specification for a minimal P2P messaging network with 
+#          Tor-like functionality. This API enables identity management, peer discovery,
+#          and message exchange through a simulated Tor network.
+#
+# Key Concepts:
+# - Identities: Local user accounts with cryptographic keypairs
+# - Peers: Other participants in the network
+# - Messages: Text communications between peers
+# - Tor Simulation: Messages are routed through a simulated onion routing network
+# ===========================================================================================
+
 openapi: 3.0.0
+
+# ===========================================================================================
+# API METADATA
+# ===========================================================================================
 info:
   title: Message via Tor Protocol API
   description: API for a minimal P2P messaging network with Tor-like functionality
@@ -9,7 +27,17 @@ info:
 # handled by background jobs triggered by the tick endpoint, not exposed
 # directly as API endpoints.
 
+# ===========================================================================================
+# API ENDPOINTS
+# ===========================================================================================
 paths:
+  # =========================================================================================
+  # IDENTITY MANAGEMENT
+  # =========================================================================================
+  
+  # -----------------------------------------------------------------------------------------
+  # Create and List Identities
+  # -----------------------------------------------------------------------------------------
   /identities:
     post:
       summary: Create a new identity
@@ -20,7 +48,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: []
+              required: []  # No required fields - name is optional
               properties:
                 name:
                   type: string
@@ -38,6 +66,7 @@ paths:
                     type: string
                   publicKey:
                     type: string
+    
     get:
       summary: List all identities
       operationId: identity.list
@@ -63,6 +92,9 @@ paths:
                         name:
                           type: string
 
+  # -----------------------------------------------------------------------------------------
+  # Invite Generation
+  # -----------------------------------------------------------------------------------------
   /identities/{identityId}/invite:
     post:
       summary: Create an invite link
@@ -85,6 +117,9 @@ paths:
                   inviteLink:
                     type: string
 
+  # -----------------------------------------------------------------------------------------
+  # Network Joining
+  # -----------------------------------------------------------------------------------------
   /join:
     post:
       summary: Join network using invite link
@@ -116,6 +151,13 @@ paths:
                   publicKey:
                     type: string
 
+  # =========================================================================================
+  # MESSAGING
+  # =========================================================================================
+  
+  # -----------------------------------------------------------------------------------------
+  # Message Creation
+  # -----------------------------------------------------------------------------------------
   /messages:
     post:
       summary: Create a new message
@@ -126,10 +168,13 @@ paths:
           application/json:
             schema:
               type: object
-              required: [text]
+              required: [text, senderId]
               properties:
                 text:
                   type: string
+                senderId:
+                  type: string
+                  description: The identity ID (pubkey) of the sender
                 recipientPeerId:
                   type: string
                   description: Optional recipient peer ID
@@ -147,6 +192,9 @@ paths:
                   text:
                     type: string
 
+  # -----------------------------------------------------------------------------------------
+  # Message Retrieval
+  # -----------------------------------------------------------------------------------------
   /messages/{peerId}:
     get:
       summary: List messages for a peer
@@ -161,7 +209,7 @@ paths:
           in: query
           schema:
             type: integer
-            default: 50
+            default: 50  # Default pagination limit
       responses:
         200:
           description: List of messages
@@ -186,6 +234,13 @@ paths:
                         sender:
                           type: string
 
+  # =========================================================================================
+  # PEER MANAGEMENT
+  # =========================================================================================
+  
+  # -----------------------------------------------------------------------------------------
+  # Peer Creation
+  # -----------------------------------------------------------------------------------------
   /peers:
     post:
       summary: Create a new peer
@@ -214,6 +269,13 @@ paths:
                   peerId:
                     type: string
 
+  # =========================================================================================
+  # BACKGROUND JOB PROCESSING
+  # =========================================================================================
+  
+  # -----------------------------------------------------------------------------------------
+  # Tick Cycle - Processes All Background Tasks
+  # -----------------------------------------------------------------------------------------
   /tick:
     post:
       summary: Run a tick cycle to process background jobs

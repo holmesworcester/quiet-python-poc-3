@@ -1,48 +1,86 @@
+# ============================================================================
+# Tick Handler Test Configuration
+# ============================================================================
+# Purpose: Tests for the tick handler which processes incoming encrypted blobs,
+#          performs greedy decryption, handles events via projectors, and
+#          manages job execution.
+#
+# Key Concepts:
+# - Greedy decrypt: Attempts to decrypt data using available keys
+# - Two-layer encryption: Outer key hash (64 chars) + inner key hash
+# - Event projection: Valid events are stored and projected to state
+# - Missing key handling: Unknown keys result in pending_missing_key entries
+# ============================================================================
+
 description: 'Tests for tick: drains incoming blobs, uses greedy_decrypt, handles via projectors, runs jobs.'
+
+# ============================================================================
+# Test Cases
+# ============================================================================
 tests:
+  # --------------------------------------------------------------------------
+  # Test 1: Successful Message Processing
+  # --------------------------------------------------------------------------
+  # Tests the complete flow of processing an incoming encrypted message:
+  # 1. Blob arrives with known outer key
+  # 2. Decryption reveals a valid message event
+  # 3. Event is stored and projected to state
   - given:
       db:
         incoming:
+          # Encrypted blob format: outerKeyHash (64 chars) + encrypted JSON payload
           - data: 'outerKey12345678901234567890123456789012345678901234567890123456{"data":"{\\"type\\":\\"message\\",\\"text\\":\\"Hello\\",\\"sender\\":\\"pubkey1\\"}"}'
-            origin: peer1
-            received_at: 1000
-        eventStore: []
+            origin: peer1      # Source peer identifier
+            received_at: 1000  # Unix timestamp
+        eventStore: []         # Initially empty event store
         state:
-          messages: []
+          messages: []         # No messages in state yet
           known_senders:
-            - pubkey1
+            - pubkey1          # Pre-registered sender public key
           key_map:
+            # Mapping of outer key hash to decryption key
             outerKey12345678901234567890123456789012345678901234567890123456: decrypt_key
     then:
       db:
-        incoming: []
+        incoming: []           # Blob processed and removed
         eventStore:
+          # Successfully decrypted and stored event
           - type: message
             text: Hello
             sender: pubkey1
         state:
           messages:
+            # Message projected to application state
             - text: Hello
               sender: pubkey1
     description: Processes incoming blob through greedy_decrypt and projects if valid
+
+  # --------------------------------------------------------------------------
+  # Test 2: Missing Key Handling
+  # --------------------------------------------------------------------------
+  # Tests behavior when receiving a blob encrypted with an unknown key:
+  # - Blob cannot be decrypted
+  # - Entry created in pending_missing_key for future resolution
   - given:
       db:
         incoming:
+          # Blob with unknown outer key hash (64 chars)
           - data: unknownKey12345678901234567890123456789012345678901234567890123eencrypted_data
             origin: peer2
             received_at: 2000
         state:
-          key_map: {}
+          key_map: {}          # No keys available for decryption
     then:
       db:
-        incoming: []
+        incoming: []           # Blob removed from incoming queue
         state:
           pending_missing_key:
+            # Entry created to track missing key for future resolution
             - envelope:
-                data: null
+                data: null     # Cannot decrypt without key
                 metadata:
                   error: 'Missing outer key: unknownKey12345678901234567890123456789012345678901234567890123e'
-                  inNetwork: false
+                  inNetwork: false    # Not yet in network (pending)
                   missingHash: unknownKey12345678901234567890123456789012345678901234567890123e
                   origin: peer2
                   receivedAt: 2000
@@ -50,43 +88,65 @@ tests:
               inNetwork: false
               timestamp: 2000
     description: Missing key results in pending_missing_key entry
+
+  # --------------------------------------------------------------------------
+  # Test 3: Two-Layer Decryption with Unknown Event Type
+  # --------------------------------------------------------------------------
+  # Tests nested encryption where:
+  # 1. Outer layer is decrypted successfully
+  # 2. Inner layer is also decrypted successfully
+  # 3. But the event type is not recognized by any projector
   - given:
       db:
         incoming:
+          # Two-layer encrypted format: outerKey + {innerHash, encrypted data}
           - data: 'outerKey12345678901234567890123456789012345678901234567890123456{"innerHash":"innerKey123","data":"{\\"type\\":\\"unknowntype\\",\\"text\\":\\"Nested\\"}"}'
             origin: peer3
             received_at: 3000
         state:
           messages: []
           key_map:
+            # Both outer and inner decryption keys available
             outerKey12345678901234567890123456789012345678901234567890123456: outer_decrypt_key
-            innerKey123: inner_decrypt_key
+            innerKey123: inner_decrypt_key  # Inner key for nested decryption
     then:
       db:
-        incoming: []
+        incoming: []           # Blob processed and removed
         state:
           unknown_events:
+            # Successfully decrypted but unrecognized event type
             - data:
-                type: unknowntype
+                type: unknowntype  # No projector registered for this type
                 text: Nested
               metadata:
+                # Full decryption path tracked in metadata
                 outerKeyHash: outerKey12345678901234567890123456789012345678901234567890123456
                 innerKeyHash: innerKey123
                 origin: peer3
                 receivedAt: 3000
-                eventId: '*'
+                eventId: '*'       # Wildcard indicates auto-generated ID
               timestamp: 3000
     description: Two-layer decryption with unknown event type goes to unknown_events
+
+  # --------------------------------------------------------------------------
+  # Test 4: Invalid JSON After Decryption
+  # --------------------------------------------------------------------------
+  # Tests error handling when decryption succeeds but reveals invalid JSON:
+  # - Key is valid and decryption works
+  # - But the decrypted content is not valid JSON
+  # - Blob is silently dropped (no error state created)
   - given:
       db:
         incoming:
+          # Valid key but content after decryption is invalid
           - data: validKey123456789012345678901234567890123456789012345678901234567invalid_json_data
             origin: peer4
             received_at: 4000
         state:
           key_map:
+            # Key exists and can decrypt
             validKey123456789012345678901234567890123456789012345678901234567: valid_key
     then:
       db:
-        incoming: []
+        incoming: []           # Blob removed without creating any state
     description: Invalid data after decrypt is dropped
