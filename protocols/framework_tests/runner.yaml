@@ -11,7 +11,8 @@
 # - A 'description' explaining the test scenario
 # ============================================================================
 
-description: 'Tests for test_runner.py: executes JSON tests, chains outputs, handles errors with detailed logs/state, permutations.'
+description: |
+  Tests for test_runner.py: executes JSON tests, chains outputs, handles errors with detailed logs/state, permutations.
 
 # ============================================================================
 # Test Cases

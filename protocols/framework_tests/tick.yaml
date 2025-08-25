@@ -12,7 +12,19 @@
 # - Missing key handling: Unknown keys result in pending_missing_key entries
 # ============================================================================
 
-description: 'Tests for tick: drains incoming blobs, uses greedy_decrypt, handles via projectors, runs jobs.'
+description: |
+  Tests for tick: drains incoming blobs, uses greedy_decrypt, handles via projectors, runs jobs.
+
+# Common anchors for reused data
+anchors:
+  # Common key hashes (64 chars)
+  outerKeyHash: &outerKeyHash outerKey12345678901234567890123456789012345678901234567890123456
+  unknownKeyHash: &unknownKeyHash unknownKey12345678901234567890123456789012345678901234567890123e
+  validKeyHash: &validKeyHash validKey123456789012345678901234567890123456789012345678901234567
+  
+  # Common empty states
+  emptyMessages: &emptyMessages []
+  emptyEventStore: &emptyEventStore []
 
 # ============================================================================
 # Test Cases
@@ -29,20 +41,21 @@ tests:
       db:
         incoming:
           # Encrypted blob format: outerKeyHash (64 chars) + encrypted JSON payload
-          - data: 'outerKey12345678901234567890123456789012345678901234567890123456{"data":"{\\"type\\":\\"message\\",\\"text\\":\\"Hello\\",\\"sender\\":\\"pubkey1\\"}"}'
+          - data: |
+              outerKey12345678901234567890123456789012345678901234567890123456{"data":"{\"type\":\"message\",\"text\":\"Hello\",\"sender\":\"pubkey1\"}"}
             origin: peer1      # Source peer identifier
             received_at: 1000  # Unix timestamp
-        eventStore: []         # Initially empty event store
+        eventStore: *emptyEventStore  # Initially empty event store
         state:
-          messages: []         # No messages in state yet
+          messages: *emptyMessages     # No messages in state yet
           known_senders:
             - pubkey1          # Pre-registered sender public key
           key_map:
             # Mapping of outer key hash to decryption key
-            outerKey12345678901234567890123456789012345678901234567890123456: decrypt_key
+            *outerKeyHash: decrypt_key
     then:
       db:
-        incoming: []           # Blob processed and removed
+        incoming: *emptyMessages  # Blob processed and removed
         eventStore:
           # Successfully decrypted and stored event
           - type: message
@@ -69,10 +82,10 @@ tests:
             origin: peer2
             received_at: 2000
         state:
-          key_map: {}          # No keys available for decryption
+          # No keys available for decryption
     then:
       db:
-        incoming: []           # Blob removed from incoming queue
+        incoming: *emptyMessages  # Blob removed from incoming queue
         state:
           pending_missing_key:
             # Entry created to track missing key for future resolution
@@ -81,7 +94,7 @@ tests:
                 metadata:
                   error: 'Missing outer key: unknownKey12345678901234567890123456789012345678901234567890123e'
                   inNetwork: false    # Not yet in network (pending)
-                  missingHash: unknownKey12345678901234567890123456789012345678901234567890123e
+                  missingHash: *unknownKeyHash
                   origin: peer2
                   receivedAt: 2000
               missingHash: unknownKey12345678901234567890123456789012345678901234567890123e
@@ -100,18 +113,19 @@ tests:
       db:
         incoming:
           # Two-layer encrypted format: outerKey + {innerHash, encrypted data}
-          - data: 'outerKey12345678901234567890123456789012345678901234567890123456{"innerHash":"innerKey123","data":"{\\"type\\":\\"unknowntype\\",\\"text\\":\\"Nested\\"}"}'
+          - data: |
+              outerKey12345678901234567890123456789012345678901234567890123456{"innerHash":"innerKey123","data":"{\"type\":\"unknowntype\",\"text\":\"Nested\"}"}
             origin: peer3
             received_at: 3000
         state:
-          messages: []
+          messages: *emptyMessages
           key_map:
             # Both outer and inner decryption keys available
-            outerKey12345678901234567890123456789012345678901234567890123456: outer_decrypt_key
+            *outerKeyHash: outer_decrypt_key
             innerKey123: inner_decrypt_key  # Inner key for nested decryption
     then:
       db:
-        incoming: []           # Blob processed and removed
+        incoming: *emptyMessages  # Blob processed and removed
         state:
           unknown_events:
             # Successfully decrypted but unrecognized event type
@@ -120,7 +134,7 @@ tests:
                 text: Nested
               metadata:
                 # Full decryption path tracked in metadata
-                outerKeyHash: outerKey12345678901234567890123456789012345678901234567890123456
+                outerKeyHash: *outerKeyHash
                 innerKeyHash: innerKey123
                 origin: peer3
                 receivedAt: 3000
@@ -145,8 +159,8 @@ tests:
         state:
           key_map:
             # Key exists and can decrypt
-            validKey123456789012345678901234567890123456789012345678901234567: valid_key
+            *validKeyHash: valid_key
     then:
       db:
-        incoming: []           # Blob removed without creating any state
+        incoming: *emptyMessages  # Blob removed without creating any state
     description: Invalid data after decrypt is dropped
