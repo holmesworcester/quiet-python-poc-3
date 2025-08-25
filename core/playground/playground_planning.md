@@ -249,66 +249,84 @@ windows:
 - Remote playground connections
 ## UI text mockups (several variants)
 
-Below are several text-based mockups of the UI for the "second iteration" showing different layouts and focused states. These are ASCII/text screenshots intended for planning, tests, and documentation.
+## Playground YAML selection UX (focused)
 
-1) 2x2 grid - default view
+This section focuses on the UI and interactions for selecting a playground YAML file from the repository (protocols/*/playgrounds). The UI should make it easy to browse protocols, preview playground definitions, create new playgrounds inside a protocol, and ensure saved files go to the intended protocol folder.
 
---------------------------------------------------------------------------------
-| Header: playgrounds.py - protocol: protocols/message_via_tor                 |
---------------------------------------------------------------------------------
-| Identities               | Messages                    |                  |
-| ------------------------ | ---------------------------|  (empty slot)    |
-| *Alice                   | [09:12] Alice -> Bob: Hi    |                  |
-|  Bob                    >| [09:13] Bob -> Alice: Hey   |                  |
-|  Charlie                 | ---------------------------|                  |
-|                          | /api GET /messages?ident=1  |                  |
-| [Input: /api ]__________ | [Input: Hello, press Enter] | [Input: ]        |
---------------------------------------------------------------------------------
-| Events                   | Console                     | Footer: [q] quit|
---------------------------------------------------------------------------------
+Goals
+- Present all playground YAML files grouped by protocol, with quick preview and keyboard-first navigation
+- Allow creating new playgrounds scoped to a protocol
+- Make "Save" and "Save As" choose the correct protocol path and show confirmation
+- Provide deterministic text snapshots for tests
 
-Notes: left pane is a selectable list with current selection at Alice. Messages pane shows formatted map output. Inputs are per-window.
+Behavior and controls
+- Up/Down: move selection through list items
+- Left/Right or Collapse/Expand: collapse/expand protocol groups
+- Enter: load the selected playground into the editor/active layout
+- p: preview selected file in right-hand pane
+- n: create new playground (prompts for name and protocol if selection is on a protocol divider)
+- s: save current playground (if loaded), will ask confirmation and show target path
+- S: save-as -> prompt for new name and protocol (defaults to current protocol)
+- / : filter search across filenames and protocol names
 
-2) 2x2 grid - compose focused (with modal-like quick help shown inline)
-
---------------------------------------------------------------------------------
-| Header: playgrounds.py - Compose Mode                                      |
---------------------------------------------------------------------------------
-| Identities               | Messages                    | Compose          |
-| ------------------------ | ---------------------------| -----------------|
-|  Alice                   | [09:12] Alice -> Bob: Hi    | To: [Bob]        |
-|  Bob                    >| [09:13] Bob -> Alice: Hey   | Message: [       ]|
-|  Charlie                 | [09:14] System: tick        | [ Send ] [Esc]   |
-|                          | ---------------------------| -----------------|
-| [Input: /select 1]______ | [Input: /api GET /msgs]____| (Focused)        |
---------------------------------------------------------------------------------
-| Events (auto-refresh 2s) | Console (log)              | Footer: /help    |
---------------------------------------------------------------------------------
-
-3) Single row 1x3 - compact horizontal (wide terminal)
+Mockup A: file browser + preview (2-column)
 
 --------------------------------------------------------------------------------
-| Header: playgrounds.py - compact                                           |
+| Header: Select Playground YAML                                             |
 --------------------------------------------------------------------------------
-| Identities | Messages (scrolling)                   | Console (commands) |
-| ---------- | -------------------------------------- | -------------------|
-| Alice      | [09:12] Alice -> Bob: Hi               | /api GET /identities|
-| Bob        | [09:13] Bob -> Alice: Hey              | /alias new /api ... |
-| Charlie    | [09:14] Alice: Are you online?         | /save demo          |
-| [Input]    | [Input]                                | [Input - command]   |
---------------------------------------------------------------------------------
-
-4) Overview mode - 3x3 grid for many windows / monitoring
-
---------------------------------------------------------------------------------
-| Header: playgrounds.py - Overview                                            |
---------------------------------------------------------------------------------
-| Identities | Messages  | Events     | Metrics   | DB | Console | Network | Sub | Extra |
-| ---------- | --------- | ---------- | --------- | -- | ------- | ------- | --- | ----- |
-| Alice      | msg log   | event log  | cpu=12%   | OK | /api    | pending | ..  |       |
-| Bob        | (tail)    | (tail)     | mem=400M  | OK | history | /status | ..  |       |
-| Charlie    |           |            | net=2MB/s | OK |         |         |     |       |
-| [Inputs per slot...]                                                              |
+| Protocols / Playgrounds                  | Preview                            |
+| ---------------------------------------- | ---------------------------------- |
+| protocols/message_via_tor                | # message_demo.yaml                 |
+|   ├ demo.yaml                            | protocol: protocols/message_via_tor |
+|   ├ quick_start.yaml  <selected>         | layout: 2x2                         |
+|   └ test_playground.yaml                 | windows: [...]                      |
+| protocols/other_proto                    |                                      |
+|   ├ example.yaml                         |                                      |
+|   └ sample_playground.yaml               |                                      |
+|                                          | [Preview truncated for deterministic]|
+|                                          | [Enter=load] [n=new] [s=save]        |
 --------------------------------------------------------------------------------
 
-Usage: these mockups serve as a guide for writing snapshot tests and for designing the layout switching and focus behaviors. They should be translated into deterministic text snapshots in tests (fixed width/height, stable timestamps replaced with tokens).
+Notes: selected file is highlighted. Preview pane shows the YAML with tokenized fields for tests. When user presses Enter, the playground loads into the TUI.
+
+Mockup B: protocol-focused (protocols are primary, files shown when expanded)
+
+--------------------------------------------------------------------------------
+| Header: Playgrounds by Protocol                                              |
+--------------------------------------------------------------------------------
+| protocols/message_via_tor                | Commands: [Enter] Load [n] New     |
+|   demo.yaml                             >| Path: protocols/message_via_tor/demo.yaml |
+|   quick_start.yaml                      | Modified: <TIMESTAMP>               |
+|   test_playground.yaml                  | Preview: windows: 4                 |
+| protocols/another                        |                                     |
+|   alpha.yaml                            |                                     |
+--------------------------------------------------------------------------------
+
+Mockup C: Save / Save As confirmation
+
+--------------------------------------------------------------------------------
+| Save playground                                                              |
+--------------------------------------------------------------------------------
+| Target: protocols/message_via_tor/new_demo.yaml                              |
+| [Y] Confirm  [n] Cancel  [e] Edit filename                                    |
+--------------------------------------------------------------------------------
+
+Deterministic snapshot notes for tests
+- Replace timestamps, user-specific paths and random IDs with tokens like <TIMESTAMP>, <USER>, <ID>
+- Fix column widths in snapshot tests (e.g., width=80) so layout doesn't reflow
+- Use the same mock directory structure in test fixtures (protocols/msg_via_tor/playgrounds/)
+- Snapshot examples should include both expanded and collapsed protocol groups
+
+Example textual snapshot (80x24) - collapsed groups
+
+--------------------------------------------------------------------------------
+| Select Playground YAML - Filter: ""                                           |
+--------------------------------------------------------------------------------
+| protocols/message_via_tor (3)                                              |
+| protocols/other_proto (2)                                                   |
+| protocols/alpha (1)                                                         |
+|                                                                            |
+| [Use arrows to expand a protocol, Enter to load, n to create new]          |
+--------------------------------------------------------------------------------
+
+These focused mockups and behaviors should be used to implement the selection panel, wiring directory enumeration (protocols/*/playgrounds/*.yaml), preview rendering (tokenized for tests), and the save flow that ensures files are created/overwritten in the correct protocol folder.
