@@ -1,38 +1,75 @@
-type: incoming
-version: 1
+# ============================================================================
+# Incoming Handler Configuration
+# ============================================================================
+# Purpose: Central handler for processing incoming encrypted messages from the
+#          network. Performs multi-layer decryption and routes decrypted events
+#          to appropriate handlers based on event type.
+#
+# Key Features:
+# - Two-layer decryption (outer and inner keys)
+# - Automatic routing to type-specific handlers
+# - Missing key management
+# - Support for both dummy and real crypto modes
+# - Unknown event type handling
+# ============================================================================
+
+type: incoming            # Handler type identifier
+version: 1                # Handler version
 description: Processes incoming messages from network and routes to appropriate handlers
+
+# ============================================================================
+# Commands
+# ============================================================================
 commands:
+  # --------------------------------------------------------------------------
+  # Process Incoming Command
+  # --------------------------------------------------------------------------
+  # Main command that processes the incoming message queue
   process_incoming:
     description: Processes incoming message queue and routes to handlers
     func: process_incoming.execute
     tests:
+      # ========================================================================
+      # Dummy Crypto Mode Tests
+      # ========================================================================
+      
+      # Test 1: Successful two-layer decryption and routing
       - description: Successfully decrypt two-layer envelope and route to handler (dummy)
         given:
           params:
             time_now_ms: 1000
           identity: null
           env:
-            CRYPTO_MODE: dummy
+            CRYPTO_MODE: dummy    # Use predictable mock crypto
           db:
             incoming:
+              # Two-layer encrypted format: outerKeyHash (64 chars) + encrypted JSON
               - data: 'outerKeyHash1234567890123456789012345678901234567890123456789012{"innerHash":"innerKeyHash123","data":"{\\"type\\":\\"message\\",\\"text\\":\\"Hello\\",\\"sender\\":\\"alice\\"}"}'
                 origin: peer1
                 received_at: 1000
             state:
               key_map:
+                # Both decryption keys available
                 outerKeyHash1234567890123456789012345678901234567890123456789012: outer_key
                 innerKeyHash123: inner_key
               messages: []
               known_senders:
-                - alice
+                - alice           # Alice is a known sender
         then:
           return:
             db:
-              incoming: []
+              incoming: []        # Message processed and removed
               state:
                 messages:
+                  # Message successfully decrypted and projected
                   - text: Hello
                     sender: alice
+
+      # ========================================================================
+      # Real Crypto Mode Tests
+      # ========================================================================
+      
+      # Test 2: Generate and decrypt real encrypted blob
       - description: Generate encrypted blob and decrypt it (real crypto)
         comment: This test generates encrypted data using the actual encryption code, then decrypts it
         given:
@@ -40,17 +77,19 @@ commands:
             time_now_ms: 1000
           identity: null
           env:
-            CRYPTO_MODE: real
+            CRYPTO_MODE: real     # Use real NaCl crypto
           db:
             incoming: []
             state:
               key_map:
+                # Blake2b hashes of the encryption keys
                 3083e1ce982abd7f59235aa1ea3c97046562c75205d4dab8affd2f3600d79958: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
                 69c6718bad81422d4d230563e6926cffcfb5375991806b1ac1c5c3998bbed949: fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
               messages: []
               known_senders:
                 - alice
           setup:
+            # Special setup to generate encrypted test data
             type: generate_encrypted_blob
             inner_data:
               type: message
@@ -66,6 +105,12 @@ commands:
                 messages:
                   - text: Hello
                     sender: alice
+
+      # ========================================================================
+      # Missing Key Tests
+      # ========================================================================
+      
+      # Test 3: Missing outer key (dummy mode)
       - description: Missing outer key creates missing_key event (dummy)
         given:
           params:
@@ -75,11 +120,12 @@ commands:
             CRYPTO_MODE: dummy
           db:
             incoming:
+              # Unknown outer key hash
               - data: unknownKeyHash12345678901234567890123456789012345678901234567890encrypted_data
                 origin: peer2
                 received_at: 2000
             state:
-              key_map: {}
+              key_map: {}         # No keys available
               pending_missing_key: []
         then:
           return:
@@ -87,8 +133,11 @@ commands:
               incoming: []
               state:
                 pending_missing_key:
+                  # Entry created for missing key
                   - missingHash: unknownKeyHash12345678901234567890123456789012345678901234567890
-                    inNetwork: false
+                    inNetwork: false  # Not validated
+
+      # Test 4: Missing outer key (real crypto)
       - description: Missing outer key creates missing_key event (real crypto)
         given:
           params:
@@ -98,6 +147,7 @@ commands:
             CRYPTO_MODE: real
           db:
             incoming:
+              # 64-char hex hash + encrypted data
               - data: 1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef123456789012345678901234567890123456789012345678some_encrypted_data_here
                 origin: peer2
                 received_at: 2000
@@ -112,6 +162,8 @@ commands:
                 pending_missing_key:
                   - missingHash: 1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
                     inNetwork: false
+
+      # Test 5: Missing inner key (dummy mode)
       - description: Missing inner key creates missing_key event (dummy)
         given:
           params:
@@ -121,6 +173,7 @@ commands:
             CRYPTO_MODE: dummy
           db:
             incoming:
+              # Outer key available but inner key missing
               - data: 'outerKeyHash1234567890123456789012345678901234567890123456789012{"innerHash":"unknownInnerKey","data":"encrypted_inner"}'
                 origin: peer3
                 received_at: 3000
@@ -135,7 +188,9 @@ commands:
               state:
                 pending_missing_key:
                   - missingHash: unknownInnerKey
-                    inNetwork: true
+                    inNetwork: true   # Passed outer validation
+
+      # Test 6: Missing inner key (real crypto)
       - description: Missing inner key with real crypto creates missing_key event
         given:
           params:
@@ -145,11 +200,13 @@ commands:
             CRYPTO_MODE: real
           db:
             incoming:
+              # Real encrypted blob with missing inner key
               - data: 3083e1ce982abd7f59235aa1ea3c97046562c75205d4dab8affd2f3600d799584b03a9b86587faa371b508af3e785e8d337fc750b4053fd290937e3787cff740b60d1c4acc826cf115ed8f66fbbfbc7d01dd88c429ce4809c3d64c3d05524c6db7ba0d0666657b38ba60f5de06a241b1876fadf9b411c7850b6e98c29c6be7ca8e4492eddfda216d697f724cc6a4028cd5bd1832f77c513c24dd0df98d7b692f958492142d6549f8b0e109236c8618476c31467bdd0d21e985dfa148a71e945a5ba85b4253971753020bad64a852792ad2
                 origin: peer3
                 received_at: 3000
             state:
               key_map:
+                # Only outer key available
                 3083e1ce982abd7f59235aa1ea3c97046562c75205d4dab8affd2f3600d79958: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
               pending_missing_key: []
         then:
@@ -160,6 +217,12 @@ commands:
                 pending_missing_key:
                   - missingHash: unknownInnerKeyHash1234567890123456789012345678901234567890123456
                     inNetwork: true
+
+      # ========================================================================
+      # Invalid Data Tests
+      # ========================================================================
+      
+      # Test 7: Invalid JSON after decryption (dummy mode)
       - description: Invalid JSON after decrypt drops message (dummy)
         given:
           params:
@@ -169,6 +232,7 @@ commands:
             CRYPTO_MODE: dummy
           db:
             incoming:
+              # Valid key but invalid JSON content
               - data: validKeyHash1234567890123456789012345678901234567890123456789012345not_json_data
                 origin: peer4
                 received_at: 4000
@@ -178,7 +242,9 @@ commands:
         then:
           return:
             db:
-              incoming: []
+              incoming: []        # Message dropped silently
+
+      # Test 8: Invalid encrypted data (real crypto)
       - description: Invalid data with real crypto drops (no nonce)
         given:
           params:
@@ -188,6 +254,7 @@ commands:
             CRYPTO_MODE: real
           db:
             incoming:
+              # Invalid format - missing nonce
               - data: fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210not_valid_encrypted_data
                 origin: peer4
                 received_at: 4000
@@ -198,6 +265,12 @@ commands:
           return:
             db:
               incoming: []
+
+      # ========================================================================
+      # Pre-decrypted Envelope Tests
+      # ========================================================================
+      
+      # Test 9: Already decrypted envelope (dummy mode)
       - description: Already decrypted envelope passes through (dummy)
         given:
           params:
@@ -207,6 +280,7 @@ commands:
             CRYPTO_MODE: dummy
           db:
             incoming:
+              # Envelope format indicates already decrypted
               - envelope: true
                 data:
                   type: message
@@ -226,6 +300,8 @@ commands:
                 messages:
                   - text: Already decrypted
                     sender: alice
+
+      # Test 10: Already decrypted envelope (real crypto)
       - description: Already decrypted envelope passes through (real crypto)
         given:
           params:
@@ -254,6 +330,12 @@ commands:
                 messages:
                   - text: Already decrypted
                     sender: alice
+
+      # ========================================================================
+      # Unknown Event Type Tests
+      # ========================================================================
+      
+      # Test 11: Unknown event type handling
       - description: Two-layer decryption with unknown event type goes to unknown handler (real crypto)
         given:
           params:
@@ -271,7 +353,7 @@ commands:
           setup:
             type: generate_encrypted_blob
             inner_data:
-              type: custom_event_type
+              type: custom_event_type    # Unrecognized event type
               payload: test data
               sender: alice
             inner_key: fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
@@ -282,12 +364,15 @@ commands:
               incoming: []
               state:
                 unknown_events:
+                  # Event stored as unknown
                   - data:
                       type: custom_event_type
                       payload: test data
                       sender: alice
                     metadata: '...'
                     timestamp: 6000
+
+      # Test 12: Missing inner key with proper hash calculation
       - description: Missing inner key creates missing_key event with proper hash (real crypto)
         given:
           params:
@@ -307,6 +392,7 @@ commands:
               type: message
               text: Missing inner key test
               sender: bob
+            # Different inner key that's not in key_map
             inner_key: '1111111111111111111111111111111111111111111111111111111111111111'
             outer_key: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
         then:
@@ -315,6 +401,12 @@ commands:
               incoming: []
               state:
                 pending_missing_key:
+                  # Hash of the missing inner key
                   - missingHash: 5cdbdb8963a47c9e1c0058adb1db2a5748248a240be05fc2e006f2550bd462be
                     inNetwork: true
+
+# ============================================================================
+# Job Configuration
+# ============================================================================
+# Automatically runs process_incoming command periodically
 job: process_incoming

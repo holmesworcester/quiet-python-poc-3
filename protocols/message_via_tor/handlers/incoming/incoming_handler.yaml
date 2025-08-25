@@ -1,37 +1,71 @@
+# ===========================================================================================
+# Incoming Message Handler
+# ===========================================================================================
+# Purpose: Processes incoming messages from the simulated Tor network. This handler takes
+#          pre-decrypted envelopes from the tor_simulator and routes them to the event store
+#          for further processing by specific handlers.
+#
+# Key Concepts:
+# - No encryption/decryption (simplified for this protocol)
+# - Validates envelope structure
+# - Routes events to appropriate handlers via event store
+# ===========================================================================================
+
 type: incoming
 version: 1
 description: Processes incoming messages for message_via_tor protocol (no encryption)
+
+# ===========================================================================================
+# COMMANDS
+# ===========================================================================================
 commands:
+  # -----------------------------------------------------------------------------------------
+  # Process Incoming - Routes Network Messages to Event Store
+  # -----------------------------------------------------------------------------------------
   process_incoming:
     description: Processes incoming message queue without decryption
     func: process_incoming.execute
+    
+    # =======================================================================================
+    # TEST SCENARIOS
+    # =======================================================================================
     tests:
+      # -------------------------------------------------------------------------------------
+      # Test: Single Pre-decrypted Envelope Processing
+      # -------------------------------------------------------------------------------------
       - description: Pre-decrypted envelope from tor_simulator passes through unchanged
         given:
           db:
             incoming:
-              - envelope: true
+              # Envelope with proper structure from tor_simulator
+              - envelope: true  # Marks this as a valid envelope
                 data:
                   type: message
                   text: Test
                   sender: alice
                 metadata:
-                  origin: network
-                  receivedAt: 1000
+                  origin: network      # From the network, not local
+                  receivedAt: 1000    # When received
             state: {}
           params:
             time_now_ms: 1000
         then:
           db:
-            incoming: []
+            incoming: []  # Queue cleared after processing
             eventStore:
+              # Event stored for message handler to process
               - type: message
                 text: Test
                 sender: alice
+                
+      # -------------------------------------------------------------------------------------
+      # Test: Multiple Envelopes Processed in Order
+      # -------------------------------------------------------------------------------------
       - description: Multiple envelopes are processed in order
         given:
           db:
             incoming:
+              # First message
               - envelope: true
                 data:
                   type: message
@@ -39,6 +73,7 @@ commands:
                   sender: alice
                 metadata:
                   receivedAt: 1000
+              # Second message
               - envelope: true
                 data:
                   type: message
@@ -47,19 +82,25 @@ commands:
                 metadata:
                   receivedAt: 2000
             state:
-              known_senders:
+              known_senders:  # List of recognized senders
                 - alice
                 - bob
           params:
             time_now_ms: 3000
         then:
           db:
-            incoming: []
+            incoming: []  # All processed
             eventStore:
+              # Events preserved in order
               - type: message
                 text: First
                 sender: alice
               - type: message
                 text: Second
                 sender: bob
+
+# ===========================================================================================
+# BACKGROUND JOB CONFIGURATION
+# ===========================================================================================
+# This handler runs as a background job during tick cycles
 job: process_incoming

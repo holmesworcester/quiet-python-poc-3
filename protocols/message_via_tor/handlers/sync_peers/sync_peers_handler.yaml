@@ -1,11 +1,40 @@
+# ===========================================================================================
+# Sync Peers Handler
+# ===========================================================================================
+# Purpose: Manages peer synchronization across the network. This handler ensures all
+#          participants have up-to-date peer information by exchanging peer lists.
+#
+# Key Functions:
+# - Projector: Responds to sync requests by sending peer information
+# - Commands: Create and send sync requests
+# - Background Job: Periodically syncs all identities with their known peers
+#
+# Synchronization Flow:
+# 1. Identity sends sync_peers request to known peers
+# 2. Recipients respond with their peer lists
+# 3. Requester updates their peer database
+# ===========================================================================================
+
 type: sync_peers
+
+# ===========================================================================================
+# PROJECTOR - HANDLES INCOMING SYNC REQUESTS
+# ===========================================================================================
 projector:
   description: Validates sync request and sends all peer events to requester
   func: projector.project
+  
+  # =======================================================================================
+  # TEST SCENARIOS
+  # =======================================================================================
   tests:
+    # -------------------------------------------------------------------------------------
+    # Test: Respond to Sync Request with Peer List
+    # -------------------------------------------------------------------------------------
     - given:
         db:
           state:
+            # Current peer knowledge
             peers:
               - pubkey: peer1
                 name: Alice
@@ -13,6 +42,7 @@ projector:
               - pubkey: peer2
                 name: Bob
                 received_by: identity1
+          # Event store contains the original peer events
           eventStore:
             - type: peer
               pubkey: peer1
@@ -24,12 +54,13 @@ projector:
           recipient: identity1
           data:
             type: sync_peers
-            sender: peer3
+            sender: peer3  # New peer requesting sync
           metadata:
             received_by: identity1
       then:
         db:
           state:
+            # State unchanged
             peers:
               - pubkey: peer1
                 name: Alice
@@ -37,6 +68,7 @@ projector:
               - pubkey: peer2
                 name: Bob
                 received_by: identity1
+            # Peer events sent to requester
             outgoing:
               - recipient: peer3
                 data:
@@ -48,6 +80,7 @@ projector:
                   type: peer
                   pubkey: peer2
                   name: Bob
+          # Sync request recorded in event store
           eventStore:
             - type: peer
               pubkey: peer1
@@ -57,7 +90,14 @@ projector:
               name: Bob
             - type: sync_peers
               sender: peer3
+
+# ===========================================================================================
+# COMMANDS
+# ===========================================================================================
 commands:
+  # -----------------------------------------------------------------------------------------
+  # Create Sync Request
+  # -----------------------------------------------------------------------------------------
   create:
     description: Creates a sync-request event given a sender peer
     func: create.execute
@@ -72,6 +112,10 @@ commands:
             newEvents:
               - type: sync_peers
                 sender: peer1
+                
+  # -----------------------------------------------------------------------------------------
+  # Send Sync Request
+  # -----------------------------------------------------------------------------------------
   send:
     description: Sends a sync-request to a recipient peer via outgoing
     func: send.execute
@@ -90,7 +134,11 @@ commands:
                 - recipient: peer2
                   data:
                     type: sync_peers
-                    sender: "*"
+                    sender: "*"  # Sender will be set by system
+                    
+  # -----------------------------------------------------------------------------------------
+  # Sync All Identities - Background Job
+  # -----------------------------------------------------------------------------------------
   sync_all:
     description: Sends sync requests from all identities to all their known peers
     func: sync_all.execute
@@ -98,6 +146,7 @@ commands:
       - given:
           db:
             state:
+              # Multiple identities
               identities:
                 - pubkey: id1
                   privkey: id1_priv
@@ -105,13 +154,16 @@ commands:
                 - pubkey: id2
                   privkey: id2_priv
                   name: Identity2
+              # Each identity knows some peers
               peers:
+                # Identity1's peer list
                 - pubkey: peer1
                   name: Peer1
                   received_by: id1
                 - pubkey: peer2
                   name: Peer2
                   received_by: id1
+                # Identity2's peer list
                 - pubkey: peer1
                   name: Peer1
                   received_by: id2
@@ -124,6 +176,7 @@ commands:
             return: Sent sync requests from 2 identities to 2 peers
           db:
             state:
+              # State preserved
               identities:
                 - pubkey: id1
                   privkey: id1_priv
@@ -144,7 +197,9 @@ commands:
                 - pubkey: peer2
                   name: Peer2
                   received_by: id2
+              # Sync requests queued for delivery
               outgoing:
+                # From identity1
                 - recipient: peer1
                   data:
                     type: sync_peers
@@ -153,6 +208,7 @@ commands:
                   data:
                     type: sync_peers
                     sender: id1
+                # From identity2
                 - recipient: peer1
                   data:
                     type: sync_peers
@@ -161,13 +217,29 @@ commands:
                   data:
                     type: sync_peers
                     sender: id2
+
+# ===========================================================================================
+# BACKGROUND JOB CONFIGURATION
+# ===========================================================================================
 job: sync_all
+
+# ===========================================================================================
+# MULTI-TICK INTEGRATION TESTS
+# ===========================================================================================
+# These tests demonstrate full synchronization flows across multiple tick cycles
 multi_tick_tests:
+  # -----------------------------------------------------------------------------------------
+  # Test: Two-Identity Peer Synchronization
+  # -----------------------------------------------------------------------------------------
   - description: Test peer-only syncing flow between two identities (no messages)
     ticks:
+      # ---------------------------------------------------------------------------------------
+      # Tick 1: Initial sync requests sent
+      # ---------------------------------------------------------------------------------------
       - given:
           db:
             state:
+              # Alice and Bob identities
               identities:
                 - pubkey: alice
                   privkey: alice_priv
@@ -175,20 +247,24 @@ multi_tick_tests:
                 - pubkey: bob
                   privkey: bob_priv
                   name: Bob
+              # Each knows about both peers
               peers:
+                # Alice's perspective
                 - pubkey: alice
                   name: Alice
                   received_by: alice
                 - pubkey: bob
                   name: Bob
                   received_by: alice
+                # Bob's perspective
                 - pubkey: alice
                   name: Alice
                   received_by: bob
                 - pubkey: bob
                   name: Bob
                   received_by: bob
-              messages: []
+              messages: []  # No messages yet
+            # Event stores for each identity
             eventStore:
               alice:
                 - type: peer
@@ -199,12 +275,13 @@ multi_tick_tests:
                   pubkey: bob
                   name: Bob
         handlers:
-          - sync_peers
-          - tor_simulator
+          - sync_peers      # Send sync requests
+          - tor_simulator   # Deliver through network
         then:
           db:
             state:
-              outgoing: []
+              outgoing: []  # Cleared after delivery
+              # Sync requests delivered
               incoming:
                 - recipient: alice
                   data:
@@ -214,15 +291,20 @@ multi_tick_tests:
                   data:
                     type: sync_peers
                     sender: alice
+                    
+      # ---------------------------------------------------------------------------------------
+      # Tick 2: Process sync requests and send peer lists
+      # ---------------------------------------------------------------------------------------
       - given: {}
         handlers:
-          - incoming
-          - sync_peers
-          - tor_simulator
+          - incoming        # Process incoming sync requests
+          - sync_peers      # Respond with peer lists
+          - tor_simulator   # Deliver responses
         then:
           db:
             state:
               outgoing: []
+              # Peer information exchanged
               incoming:
                 - recipient: bob
                   data:
@@ -234,13 +316,18 @@ multi_tick_tests:
                     type: peer
                     pubkey: bob
                     name: Bob
+                    
+      # ---------------------------------------------------------------------------------------
+      # Tick 3: Process received peer information
+      # ---------------------------------------------------------------------------------------
       - given: {}
         handlers:
-          - incoming
-          - peer
+          - incoming  # Process incoming peer events
+          - peer      # Update peer database
         then:
           db:
             state:
+              # Both identities have complete peer information
               peers:
                 - pubkey: alice
                   name: Alice
@@ -255,6 +342,7 @@ multi_tick_tests:
                   name: Bob
                   received_by: bob
               messages: []
+            # Event stores updated with peer information
             eventStore:
               alice:
                 - type: peer
@@ -270,11 +358,19 @@ multi_tick_tests:
                 - type: peer
                   pubkey: alice
                   name: Alice
+                  
+  # -----------------------------------------------------------------------------------------
+  # Test: Three-Way Synchronization with Late Joiner
+  # -----------------------------------------------------------------------------------------
   - description: Test three-way peer syncing with Charlie joining late
     ticks:
+      # ---------------------------------------------------------------------------------------
+      # Tick 1: Alice and Bob sync
+      # ---------------------------------------------------------------------------------------
       - given:
           db:
             state:
+              # Initial two identities
               identities:
                 - pubkey: alice
                   privkey: alice_priv
@@ -282,6 +378,7 @@ multi_tick_tests:
                 - pubkey: bob
                   privkey: bob_priv
                   name: Bob
+              # Initial peer knowledge
               peers:
                 - pubkey: alice
                   name: Alice
@@ -319,9 +416,14 @@ multi_tick_tests:
                   data:
                     type: sync_peers
                     sender: alice
+                    
+      # ---------------------------------------------------------------------------------------
+      # Tick 2: Charlie joins and triggers new sync round
+      # ---------------------------------------------------------------------------------------
       - given:
           db:
             state:
+              # Charlie added
               identities:
                 - pubkey: alice
                   privkey: alice_priv
@@ -332,7 +434,9 @@ multi_tick_tests:
                 - pubkey: charlie
                   privkey: charlie_priv
                   name: Charlie
+              # Everyone knows everyone
               peers:
+                # Alice knows all
                 - pubkey: alice
                   name: Alice
                   received_by: alice
@@ -342,6 +446,7 @@ multi_tick_tests:
                 - pubkey: charlie
                   name: Charlie
                   received_by: alice
+                # Bob knows all
                 - pubkey: alice
                   name: Alice
                   received_by: bob
@@ -351,6 +456,7 @@ multi_tick_tests:
                 - pubkey: charlie
                   name: Charlie
                   received_by: bob
+                # Charlie knows all
                 - pubkey: alice
                   name: Alice
                   received_by: charlie
@@ -372,7 +478,9 @@ multi_tick_tests:
         then:
           db:
             state:
+              # Complex sync request pattern
               incoming:
+                # Charlie initiates sync with everyone
                 - recipient: alice
                   data:
                     type: sync_peers
@@ -381,6 +489,7 @@ multi_tick_tests:
                   data:
                     type: sync_peers
                     sender: charlie
+                # Alice and Bob continue syncing
                 - recipient: charlie
                   data:
                     type: sync_peers
@@ -389,16 +498,22 @@ multi_tick_tests:
                   data:
                     type: sync_peers
                     sender: bob
+                # Alice's response to Bob's earlier sync
                 - recipient: bob
                   data:
                     type: peer
                     pubkey: alice
                     name: Alice
+                # Bob's response to Alice's earlier sync
                 - recipient: alice
                   data:
                     type: peer
                     pubkey: bob
                     name: Bob
+                    
+      # ---------------------------------------------------------------------------------------
+      # Tick 3: Process sync responses and share Charlie's information
+      # ---------------------------------------------------------------------------------------
       - given: {}
         handlers:
           - incoming
@@ -407,6 +522,7 @@ multi_tick_tests:
         then:
           db:
             state:
+              # Charlie receives peer information
               incoming:
                 - recipient: charlie
                   data:
@@ -418,6 +534,7 @@ multi_tick_tests:
                     type: peer
                     pubkey: bob
                     name: Bob
+                # Alice and Bob receive Charlie's information
                 - recipient: alice
                   data:
                     type: peer
@@ -428,12 +545,17 @@ multi_tick_tests:
                     type: peer
                     pubkey: charlie
                     name: Charlie
+                    
+      # ---------------------------------------------------------------------------------------
+      # Tick 4: Final state - everyone knows everyone
+      # ---------------------------------------------------------------------------------------
       - given: {}
         handlers:
           - incoming
           - peer
         then:
           db:
+            # All event stores contain complete peer information
             eventStore:
               alice:
                 - type: peer

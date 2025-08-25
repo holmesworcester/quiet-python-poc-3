@@ -1,23 +1,48 @@
-type: missing_key
+# ============================================================================
+# Missing Key Handler Configuration
+# ============================================================================
+# Purpose: Manages envelopes that cannot be decrypted due to missing keys.
+#          Tracks these partial envelopes and retries decryption when new
+#          keys become available.
+#
+# Key Concepts:
+# - Partial envelopes: Encrypted data waiting for decryption keys
+# - Missing hash: The key hash needed to decrypt the envelope
+# - In-network status: Whether the envelope passed initial validation
+# - Retry mechanism: Automatic retry when key_map is updated
+# ============================================================================
+
+type: missing_key  # Handler type identifier
+
+# ============================================================================
+# Projector Configuration
+# ============================================================================
+# The projector stores partial envelopes that couldn't be decrypted
+# in state.pending_missing_key for future retry attempts
 projector:
   description: Projects partial envelopes to state.pending_missing_key with metadata/error/missingHash/inNetwork
   func: projector.project
   tests:
+    # --------------------------------------------------------------------------
+    # Test 1: Missing Outer Key
+    # --------------------------------------------------------------------------
+    # When the outer encryption key is missing, the entire blob remains encrypted
     - given:
         db:
-          state: {}
+          state: {}  # Empty initial state
         envelope:
-          data: null
+          data: null  # Cannot decrypt without key
           metadata:
-            error: 'Missing outer key: abc123'
-            inNetwork: false
-            missingHash: abc123
-            origin: peer1
-            receivedAt: 1000
+            error: 'Missing outer key: abc123'  # Error message with key hash
+            inNetwork: false                    # Not validated (can't decrypt)
+            missingHash: abc123                 # Hash of missing key
+            origin: peer1                       # Source peer
+            receivedAt: 1000                    # Timestamp
       then:
         db:
           state:
             pending_missing_key:
+              # Entry created for future retry
               - envelope:
                   data: null
                   metadata:
@@ -26,49 +51,65 @@ projector:
                     missingHash: abc123
                     origin: peer1
                     receivedAt: 1000
-                missingHash: abc123
+                missingHash: abc123  # Duplicate for quick lookup
                 inNetwork: false
-                timestamp: 1000
+                timestamp: 1000      # When this was added to pending
+
+    # --------------------------------------------------------------------------
+    # Test 2: Missing Inner Key
+    # --------------------------------------------------------------------------
+    # When outer decryption succeeds but inner key is missing
     - given:
         db:
           state:
-            pending_missing_key: []
+            pending_missing_key: []  # Initially empty
         envelope:
           data:
-            data: encrypted_data
+            data: encrypted_data     # Still encrypted inner data
           metadata:
-            error: 'Missing inner key: def456'
-            inNetwork: true
-            missingHash: def456
-            outerKeyHash: abc123
+            error: 'Missing inner key: def456'  # Inner key missing
+            inNetwork: true                     # Passed outer validation
+            missingHash: def456                 # Hash of missing inner key
+            outerKeyHash: abc123                # Successfully used outer key
             origin: peer2
             receivedAt: 2000
       then:
         db:
           state:
             pending_missing_key:
+              # Entry for inner key retry
               - envelope:
                   data:
                     data: encrypted_data
                   metadata:
                     error: 'Missing inner key: def456'
-                    inNetwork: true
+                    inNetwork: true      # Already validated outer layer
                     missingHash: def456
-                    outerKeyHash: abc123
+                    outerKeyHash: abc123 # Track decryption path
                     origin: peer2
                     receivedAt: 2000
                 missingHash: def456
                 inNetwork: true
                 timestamp: 2000
+
+# ============================================================================
+# Commands
+# ============================================================================
 commands:
+  # --------------------------------------------------------------------------
+  # Retry Pending Command
+  # --------------------------------------------------------------------------
+  # Attempts to process pending envelopes when new keys become available
   retry_pending:
     description: Retry pending missing key envelopes when key_map has changed
     func: retry_pending.execute
     tests:
+      # Test successful retry when key becomes available
       - given:
           db:
             state:
               pending_missing_key:
+                # Pending envelope waiting for key
                 - envelope:
                     data: null
                     metadata:
@@ -77,17 +118,20 @@ commands:
                   inNetwork: false
                   timestamp: 1000
               key_map:
-                key123: found_key
+                key123: found_key  # Key now available!
           params: {}
         then:
           return:
             return: Processed 1 entries
-            processed: 1
-            remaining: 0
+            processed: 1          # Successfully processed
+            remaining: 0          # None left pending
+      
+      # Test retry when key still missing
       - given:
           db:
             state:
               pending_missing_key:
+                # Pending envelope still waiting
                 - envelope:
                     data: null
                     metadata:
@@ -95,11 +139,16 @@ commands:
                   missingHash: key456
                   inNetwork: false
                   timestamp: 1000
-              key_map: {}
+              key_map: {}  # No keys available
           params: {}
         then:
           return:
             return: Processed 0 entries
-            processed: 0
-            remaining: 1
+            processed: 0          # Nothing could be processed
+            remaining: 1          # Still waiting for key
+
+# ============================================================================
+# Job Configuration
+# ============================================================================
+# Automatically runs retry_pending command periodically
 job: retry_pending

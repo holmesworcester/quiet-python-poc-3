@@ -1,8 +1,32 @@
+# ===========================================================================================
+# Message Handler
+# ===========================================================================================
+# Purpose: Handles text messages in the network. This handler validates message signatures,
+#          stores messages, and routes them through the simulated Tor network.
+#
+# Key Functions:
+# - Validates messages have required fields (text, sender)
+# - Stores messages with metadata
+# - Marks messages from unknown peers
+# - Routes self-generated messages to outgoing queue
+# ===========================================================================================
+
 type: message
+
+# ===========================================================================================
+# PROJECTOR - HANDLES INCOMING MESSAGE EVENTS
+# ===========================================================================================
 projector:
   description: Validates sig using metadata, adds to state.messages if valid; if selfGenerated, encrypts and adds to outgoing.
   func: projector.project
+  
+  # =======================================================================================
+  # TEST SCENARIOS
+  # =======================================================================================
   tests:
+    # -------------------------------------------------------------------------------------
+    # Test: Self-Generated Message
+    # -------------------------------------------------------------------------------------
     - given:
         db:
           state:
@@ -12,18 +36,22 @@ projector:
             type: message
             text: Hello
             sender: alice_pub
-            sig: abc
+            sig: abc  # Signature (simplified in this protocol)
           metadata:
-            selfGenerated: true
-            received_by: alice_pub
+            selfGenerated: true      # Message created locally
+            received_by: alice_pub   # Sender is also receiver for self-generated
       then:
         db:
           state:
             messages:
               - text: Hello
                 sender: alice_pub
-                timestamp: "*"
+                timestamp: "*"       # System-generated timestamp
                 received_by: alice_pub
+                
+    # -------------------------------------------------------------------------------------
+    # Test: Received Message from Known Peer
+    # -------------------------------------------------------------------------------------
     - given:
         db:
           state:
@@ -57,13 +85,17 @@ projector:
               - text: World
                 sender: sender1
                 sig: def
-                id: event123
+                id: event123         # Event ID preserved
                 received_by: test_identity
+                
+    # -------------------------------------------------------------------------------------
+    # Test: Message from Unknown Sender
+    # -------------------------------------------------------------------------------------
     - description: Message from unknown sender (no peers) should be stored with unknown_peer flag
       given:
         db:
           state:
-            peers: []
+            peers: []  # No known peers
             messages: []
         envelope:
           data:
@@ -82,7 +114,11 @@ projector:
               - text: Unknown
                 sender: unknown_sender
                 timestamp: "*"
-                unknown_peer: true
+                unknown_peer: true   # Marked as from unknown peer
+                
+    # -------------------------------------------------------------------------------------
+    # Test: Self-Generated Message Metadata
+    # -------------------------------------------------------------------------------------
     - description: Self-generated message should be stored with received_by set to sender
       given:
         db:
@@ -102,8 +138,12 @@ projector:
             messages:
               - text: Hello
                 sender: peerA
-                received_by: peerA
+                received_by: peerA   # Self-generated: sender = receiver
                 timestamp: "*"
+                
+    # -------------------------------------------------------------------------------------
+    # Test: Message from Known Sender
+    # -------------------------------------------------------------------------------------
     - description: Message from known sender should be stored normally
       given:
         db:
@@ -133,6 +173,10 @@ projector:
                 sender: peerA
                 timestamp: "*"
                 received_by: peerB
+                
+    # -------------------------------------------------------------------------------------
+    # Test: Invalid Message - No Text
+    # -------------------------------------------------------------------------------------
     - description: Projector should ignore messages lacking text/content (with known sender)
       given:
         db:
@@ -146,12 +190,17 @@ projector:
           data:
             type: message
             sender: peerA
+            # Missing text field
           metadata:
             received_by: peerB
       then:
         db:
           state:
-            messages: []
+            messages: []  # Message rejected
+            
+    # -------------------------------------------------------------------------------------
+    # Test: Non-Self-Generated Message Routing
+    # -------------------------------------------------------------------------------------
     - description: Projector should not add to outgoing for non-self-generated messages (with known sender)
       given:
         db:
@@ -173,7 +222,7 @@ projector:
             sender: peerA
             sig: xyz
           metadata:
-            selfGenerated: false
+            selfGenerated: false    # Not self-generated
             received_by: peerB
       then:
         db:
@@ -183,7 +232,11 @@ projector:
                 sender: peerA
                 timestamp: "*"
                 received_by: peerB
-            outgoing: []
+            outgoing: []  # Not added to outgoing queue
+            
+    # -------------------------------------------------------------------------------------
+    # Test: Unknown Peer Detection
+    # -------------------------------------------------------------------------------------
     - description: Message from unknown peer should be marked as unknown-peer
       given:
         db:
@@ -210,8 +263,12 @@ projector:
                 sender: unknown_pub
                 sig: xyz
                 timestamp: "*"
-                unknown_peer: true
+                unknown_peer: true  # Marked as unknown
             peers: []
+            
+    # -------------------------------------------------------------------------------------
+    # Test: Known Peer Detection
+    # -------------------------------------------------------------------------------------
     - description: Message from known peer should not be marked as unknown-peer
       given:
         db:
@@ -247,12 +304,18 @@ projector:
                 sig: abc
                 timestamp: "*"
                 received_by: test_identity
+                # No unknown_peer flag
+                
+    # -------------------------------------------------------------------------------------
+    # Test: Identity-Specific Peer Knowledge
+    # -------------------------------------------------------------------------------------
     - description: Message should be marked as unknown_peer when sender is not known to the specific recipient
       given:
         db:
           state:
             messages: []
             peers:
+              # peer1 is known to identity1 but not identity2
               - pubkey: peer1
                 name: Peer 1
                 received_by: identity1
@@ -273,7 +336,7 @@ projector:
             sender: peer1
             sig: xyz
           metadata:
-            received_by: identity2
+            received_by: identity2  # identity2 doesn't know peer1
       then:
         db:
           eventStore:
@@ -288,21 +351,31 @@ projector:
                 sig: xyz
                 timestamp: "*"
                 received_by: identity2
-                unknown_peer: true
+                unknown_peer: true  # Unknown to this identity
+
+# ===========================================================================================
+# COMMANDS
+# ===========================================================================================
 commands:
+  # -----------------------------------------------------------------------------------------
+  # Create and Broadcast Message
+  # -----------------------------------------------------------------------------------------
   create:
     description: Creates canonical signed event and broadcasts to all known peers.
     func: create.execute
     tests:
+      # -------------------------------------------------------------------------------------
+      # Test: Message with No Peers
+      # -------------------------------------------------------------------------------------
       - description: Message with no known peers
         given:
           db:
             state:
-              peers: []
+              peers: []  # No peers to send to
           params:
             text: Hello
           env:
-            CRYPTO_MODE: dummy
+            CRYPTO_MODE: dummy  # Simplified crypto for testing
         then:
           return:
             api_response:
@@ -313,6 +386,10 @@ commands:
               - type: message
                 text: Hello
                 sig: "*"
+                
+      # -------------------------------------------------------------------------------------
+      # Test: Broadcast to Multiple Peers
+      # -------------------------------------------------------------------------------------
       - description: Message broadcast to all known peers
         given:
           db:
@@ -343,7 +420,7 @@ commands:
             api_response:
               return: Message broadcast to 2 peers
               messageId: "*"
-              sentTo: 2
+              sentTo: 2  # Excludes self
             newEvents:
               - type: message
                 text: Hello peers
@@ -351,6 +428,7 @@ commands:
           db:
             state:
               outgoing:
+                # Message queued for each peer (excluding self)
                 - recipient: peer1
                   data:
                     type: message
@@ -361,6 +439,10 @@ commands:
                     type: message
                     text: Hello peers
                     sig: "*"
+                    
+      # -------------------------------------------------------------------------------------
+      # Test: Message Delivery Through Ticks
+      # -------------------------------------------------------------------------------------
       - description: Message broadcast to peers is delivered after ticks
         given:
           db:
@@ -385,7 +467,7 @@ commands:
           identity: alice
           env:
             CRYPTO_MODE: dummy
-        ticks: 2
+        ticks: 2  # Process through two tick cycles
         then:
           return:
             api_response:
@@ -397,11 +479,18 @@ commands:
               messages:
                 - text: Hello via ticks
                   sender: "*"
-              outgoing: []
+              outgoing: []  # Queue cleared after delivery
+              
+  # -----------------------------------------------------------------------------------------
+  # List Messages
+  # -----------------------------------------------------------------------------------------
   list:
     description: Lists all messages for a given peer
     func: list.execute
     tests:
+      # -------------------------------------------------------------------------------------
+      # Test: Basic Message Listing
+      # -------------------------------------------------------------------------------------
       - given:
           db:
             state:
@@ -431,6 +520,10 @@ commands:
                   sender: peer2
                   recipient: peer1
                   timestamp: 200
+                  
+      # -------------------------------------------------------------------------------------
+      # Test: Exclude Unknown Peer Messages
+      # -------------------------------------------------------------------------------------
       - description: List should exclude messages marked as unknown_peer
         given:
           db:
@@ -445,7 +538,7 @@ commands:
                   sender: unknown1
                   recipient: peer1
                   timestamp: 150
-                  unknown_peer: true
+                  unknown_peer: true  # Excluded from list
                   received_by: peer1
                 - text: Hello
                   sender: peer2
@@ -459,6 +552,7 @@ commands:
             api_response:
               return: Found 2 messages
               messages:
+                # Unknown peer message excluded
                 - text: Hi
                   sender: peer1
                   recipient: peer2
