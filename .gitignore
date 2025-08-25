@@ -64,3 +64,9 @@ Thumbs.db
 
 # Project specific
 *.log
+
+# Test databases
+.test_*.db
+.test_*.db-shm
+.test_*.db-wal
+api.db
