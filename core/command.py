@@ -131,6 +131,19 @@ def _run_command_with_tx(handler_name, command_name, input_data, db, time_now_ms
                     del event_copy['received_by']
                 else:
                     event_copy = event
+
+                # For self-generated events that include a pubkey but no received_by,
+                # set received_by to the event pubkey. This ensures identity and peer
+                # creation events are recorded as belonging to the created identity
+                # in the eventStore (otherwise UI shows Received by: N/A).
+                if metadata.get('selfGenerated') and 'received_by' not in metadata:
+                    possible_pubkey = None
+                    try:
+                        possible_pubkey = event_copy.get('pubkey')
+                    except Exception:
+                        possible_pubkey = None
+                    if possible_pubkey:
+                        metadata['received_by'] = possible_pubkey
                 
                 envelope = {
                     'data': event_copy,

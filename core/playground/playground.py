@@ -86,25 +86,26 @@ class WindowWidget(Static):
         if command.startswith("/"):
             await self.handle_slash_command(command)
         else:
-            # Use default command if set
-            if self.state.default_command and not command.startswith("/"):
-                # Substitute command as {input} in default
+            
+            parts = command.split(None, 1)
+            if parts and parts[0] in self.state.aliases:
+                alias_cmd = self.state.aliases[parts[0]]
+                if len(parts) > 1:
+                    args = parts[1].split()
+                    for i, arg in enumerate(args):
+                        alias_cmd = alias_cmd.replace(f"{{{i+1}}}", arg)
+                    alias_cmd = alias_cmd.replace("{*}", parts[1])
+                await self.execute_command(alias_cmd)
+                return
+
+            
+            if self.state.default_command:
                 actual_command = self.state.default_command.replace("{input}", command)
                 await self.execute_command(actual_command)
-            else:
-                # Check aliases
-                parts = command.split(None, 1)
-                if parts and parts[0] in self.state.aliases:
-                    alias_cmd = self.state.aliases[parts[0]]
-                    if len(parts) > 1:
-                        # Substitute arguments
-                        args = parts[1].split()
-                        for i, arg in enumerate(args):
-                            alias_cmd = alias_cmd.replace(f"{{{i+1}}}", arg)
-                        alias_cmd = alias_cmd.replace("{*}", parts[1])
-                    await self.execute_command(alias_cmd)
-                else:
-                    self.add_output(f"Unknown command: {command}")
+                return
+
+            
+            self.add_output(f"Unknown command: {command}")
                     
     async def handle_slash_command(self, command: str):
         """Handle slash commands"""
@@ -117,6 +118,15 @@ class WindowWidget(Static):
         
         if cmd == "help":
             self.show_help()
+        elif cmd in self.state.aliases:
+            alias_cmd = self.state.aliases[cmd]
+            if args:
+                arg_list = args.split()
+                for i, arg in enumerate(arg_list):
+                    alias_cmd = alias_cmd.replace(f"{{{i+1}}}", arg)
+                alias_cmd = alias_cmd.replace("{*}", args)
+            await self.execute_command(alias_cmd)
+        
         elif cmd == "clear":
             self.output.clear()
             self.state.output_buffer.clear()
@@ -430,7 +440,15 @@ class CLIExecutor:
         
         elif cmd == "echo":
             return args
-            
+        elif cmd in self.aliases:
+            alias_cmd = self.aliases[cmd]
+            if args:
+                arg_list = args.split()
+                for i, arg in enumerate(arg_list):
+                    alias_cmd = alias_cmd.replace(f"{{{i+1}}}", arg)
+                alias_cmd = alias_cmd.replace("{*}", args)
+            return await self.execute_command(alias_cmd)
+
         else:
             return f"Unknown command: /{cmd}"
             
@@ -524,10 +542,26 @@ def main():
     parser.add_argument("--cli-interactive", action="store_true", help="Interactive CLI mode")
     
     args = parser.parse_args()
-    
-    # Load configuration
-    config = load_config(args.config)
-    
+
+    # Determine if the positional argument is a config YAML file or a protocol path
+    config_path = None
+    protocol = args.protocol
+
+    if os.path.exists(protocol) and protocol.lower().endswith(('.yaml', '.yml')):
+        # The user passed a YAML config as the first positional arg: use it
+        config_path = protocol
+        cfg = load_config(config_path)
+        protocol = cfg.get('protocol')
+        if not protocol:
+            parser.error(f"Config {config_path} does not specify a 'protocol' field")
+        # override args so downstream code can use args.protocol and args.config
+        args.protocol = protocol
+        args.config = config_path
+        config = cfg
+    else:
+        # Not a YAML config file; use provided --config if any
+        config = load_config(args.config)
+
     if args.cli or args.cli_file or args.cli_interactive:
         # CLI mode
         run_cli_mode(args, config)

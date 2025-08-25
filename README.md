@@ -50,3 +50,16 @@ python protocols/message_via_tor/demo/demo.py
 - **Handlers**: Process events and update state
 - **Tick**: Background job processor for message delivery
 - **Demo**: Interactive terminal UI showing multiple identities
+
+## Using a virtual environment (venv)
+
+A helper script is included to create and populate a virtual environment with
+runtime dependencies. Run:
+
+```bash
+./scripts/setup_venv.sh
+source venv/bin/activate
+```
+
+If this environment already contains a venv directory you can activate it
+directly with `source venv/bin/activate`.

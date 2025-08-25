@@ -59,7 +59,7 @@ class MessageViaTorDemo(App):
     
     #controls {
         column-span: 2;
-        height: 3;
+        height: auto;
         dock: top;
         background: $surface;
         border: solid $primary;
@@ -71,7 +71,10 @@ class MessageViaTorDemo(App):
         margin: 0 1;
         min-width: 10;
         width: auto;
-        height: 3;
+        height: auto;
+        padding: 0 1;
+        color: $text;
+        align: center middle;
     }
     
     #tick-btn {
@@ -300,10 +303,13 @@ class MessageViaTorDemo(App):
                 for i, identity in enumerate(identities[:4]):
                     panel_num = i + 1
                     setattr(self, f"identity{panel_num}_selected", i)
-                    
-                    # Update the label to show the identity name
-                    label = self.query_one(f"#identity{panel_num}_label", Static)
-                    label.update(f"Identity {panel_num}: {identity.get('name', 'Unknown')}")
+
+                    try:
+                        label = self.query_one(f"#identity{panel_num}-dropdown", Static)
+                        label.update(f"Identity {panel_num}: {identity.get('name', 'Unknown')}")
+                    except Exception:
+                        pass
+                        pass
                     
         except Exception as e:
             self.record_change(f"Error loading identities: {e}", {}, {})
@@ -371,17 +377,12 @@ class MessageViaTorDemo(App):
             )
             
             if response.get("status") == 200:
-                # Refresh state to see the changes
-                self.refresh_state()
-                
-                # Return the messages from the API response
-                return response.get("body", {}).get("messages", [])
+                # Return success flag and messages from the API response
+                return True, response.get("body", {}).get("messages", [])
             else:
-                # Fall back to empty list on error
-                return []
+                return False, []
         except Exception as e:
-            # Fall back to empty list on error
-            return []
+            return False, []
     
     def update_displays(self):
         """Update all display widgets"""
@@ -402,15 +403,18 @@ class MessageViaTorDemo(App):
                 messages_log.display = True
                 
                 # Update messages
-                messages = self.get_messages_for_identity(identity['pubkey'])
-                messages_log.clear()
+                success, messages = self.get_messages_for_identity(identity['pubkey'])
+                # Only clear and rewrite the log when we have a successful response.
+                # If the API call failed, preserve the existing log to avoid erasing messages.
+                if success:
+                    messages_log.clear()
                 
                 # Create a mapping of pubkeys to names for better display
                 pubkey_to_name = {}
                 for id_info in identities:
                     pubkey_to_name[id_info['pubkey']] = id_info['name']
                 
-                for msg in messages:
+                    for msg in messages:
                     sender_pubkey = msg.get('sender', 'Unknown')
                     sender_name = pubkey_to_name.get(sender_pubkey, sender_pubkey[:8] + '...')
                     text = msg.get('text', '')
@@ -468,9 +472,9 @@ class MessageViaTorDemo(App):
             
             return response
         
-        # Replace execute_api in core.api module
         import core.api
         core.api.execute_api = execute_api_with_collection
+        globals()['execute_api'] = execute_api_with_collection
     
     def _collect_event(self, event, source, operation):
         """Collect an event for display"""
