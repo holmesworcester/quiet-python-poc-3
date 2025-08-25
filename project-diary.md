@@ -15,3 +15,10 @@ Notes:
 - i'm seeing a lot of type issues. 
 - dummy crypto makes things easier in some ways and harder in others: bugs can persist for longer. real crypto is kind of good for checking correctness.
 - invite and join are a nexus of difficulty
+- need to find a good place to remind it about basic things like venv and runner
+- it would be good if the demo came with the framework. we could have a cli demo and a gui demo and think about some tricks to get it to autogenerate. the gui demo would be identities and slash commands maybe. or we could make columns customizable for api queries and command entry context, so you get something like a message experience. 
+- like lots of boxes and tiles. or you could get a bunch of checkboxes about what queries from the api you want to show and what values you want to put in them based on stuff you have! 
+- i have to remind the llm about projecting after a command quite a bit.
+- it seems that when we get to blocking/unblocking, there could be a protocol-generic way of doing it: every event has an event-id (hash of signed plaintext event) and there's a blocked-by table that lists the event-id that's blocked and the event-id that's blocking, and whenever we newly project an event we re-handle all the events in blocked. that way there's a first class "mark blocked" function, a first class "get id" function, and everything gets unblocking for free. we have to think about cycles but i don't think there are any because once an event gets projected it's in, and that won't happen again. and we make all this atomic. 
+- keeping protocol-specific stuff like identity out of test runner is a real battle with the llm. one instruction could be, we are only working on framework and not protocol, or vice versa.  
+- yaml seems more readable than json and it has variables which are good for tests. and you can mess with the format more and add comments and linebreaks etc. probably that's best
