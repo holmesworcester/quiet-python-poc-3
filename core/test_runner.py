@@ -1,13 +1,7 @@
 #!/usr/bin/env python3
 """
 Test Runner for the Event Framework
-
-NOTE: Adapter Uniqueness Constraint
-The framework enforces that there can only be ONE canonical adapter for each
-transformation (e.g., plaintext_to_signed). This prevents ambiguity in the
-adapter graph. If you need optimized transformations across multiple hops,
-create explicit shortcut adapters (e.g., plaintext_to_encrypted) rather than
-having multiple implementations of the same single-hop transformation.
+Note: this should not contain any protocol-specific code
 """
 import json
 import sys
@@ -113,16 +107,35 @@ class TestRunner:
             if "CRYPTO_MODE" not in os.environ:
                 os.environ["CRYPTO_MODE"] = "dummy"
             
-            # Set up initial state
-            db = copy.deepcopy(given.get("db", {"eventStore": {}, "state": {}}))
-            incoming_queue = copy.deepcopy(given.get("incomingQueue", []))
-            current_identity = given.get("currentIdentity", "test-user")
+            # Set up initial state using persistent database
+            from core.db import create_db
+            # Use a unique database for each test to avoid conflicts
+            import uuid
+            test_id = str(uuid.uuid4())[:8]
+            base_test_db = os.environ.get('TEST_DB_PATH', ':memory:')
+            if base_test_db != ':memory:':
+                # Make it unique for this test
+                test_db_path = base_test_db.replace('.db', f'_{test_id}.db')
+            else:
+                test_db_path = base_test_db
+            
+            db = create_db(db_path=test_db_path)
+            
+            # Store the path for cleanup
+            self._current_test_db = test_db_path
+            
+            # Initialize db with given data
+            given_db = given.get("db", {"eventStore": {}, "state": {}})
+            for key, value in given_db.items():
+                db[key] = value
+            
+            # Tests should provide encrypted data directly, not use setup generation
             
             # Execute commands if any
             command_results = []
             if "commands" in given:
                 for cmd in given["commands"]:
-                    result = self.execute_command(cmd, current_identity, db)
+                    result = self.execute_command(cmd, db)
                     command_results.append(result)
                     # Note: events are now projected automatically by run_command
             
@@ -137,24 +150,48 @@ class TestRunner:
                     db["state"]["messages"] = []
                 
                 # Add to eventStore and state
+                if "eventStore" not in db:
+                    db["eventStore"] = []
                 for event in events:
-                    db["eventStore"]["pubkey1"].append(event)
+                    db["eventStore"].append(event)
                     db["state"]["messages"].append(event)
             
-            # Run real tick
-            from core.tick import tick
-            # Add incoming queue items to db.incoming
-            if incoming_queue:
-                if "incoming" not in db:
-                    db["incoming"] = []
-                db["incoming"].extend(incoming_queue)
-            time_now_ms = scenario.get('time_now_ms')
-            tick(db, time_now_ms=time_now_ms)
+            # Run ticks if specified or if this is a tick.json test
+            ticks_to_run = scenario.get('ticks', 0)
+            # For tick.json tests, always run at least one tick
+            if 'tick.json' in test_file:
+                ticks_to_run = max(1, ticks_to_run)
+            
+            if ticks_to_run > 0:
+                from core.tick import tick
+                time_now_ms = scenario.get('time_now_ms')
+                for _ in range(ticks_to_run):
+                    tick(db, time_now_ms=time_now_ms)
             
             # Build result for comparison
-            result = {"db": db}
+            # Convert persistent db to dict for comparison
+            db_dict = db.to_dict() if hasattr(db, 'to_dict') else db
+            result = {"db": db_dict}
             if command_results:
                 result["commandResults"] = command_results
+                # Also check if command results contain db updates
+                for cmd_result in command_results:
+                    if isinstance(cmd_result, dict) and 'db' in cmd_result:
+                        # Replace with dict representation
+                        if hasattr(cmd_result['db'], 'to_dict'):
+                            cmd_result['db'] = cmd_result['db'].to_dict()
+            
+            # Close the database connection
+            if hasattr(db, 'close'):
+                db.close()
+            
+            # Clean up test database file
+            if hasattr(self, '_current_test_db') and self._current_test_db != ':memory:':
+                if os.path.exists(self._current_test_db):
+                    try:
+                        os.remove(self._current_test_db)
+                    except:
+                        pass
             
             # Filter out description from then before matching
             then_filtered = {k: v for k, v in then.items() if k != "description"}
@@ -176,7 +213,7 @@ class TestRunner:
                 "error": str(e)
             }
     
-    def execute_command(self, cmd, identity, db):
+    def execute_command(self, cmd, db):
         """Execute a command and return its result"""
         handler = cmd["handler"]
         command = cmd["command"]
@@ -188,23 +225,21 @@ class TestRunner:
         if not is_valid:
             raise ValueError(f"Input validation failed: {error}")
         
-        # Use run_command from tick to execute and project events
-        from core.tick import run_command
-        updated_db, result = run_command(handler, command, input_data, identity, db, time_now_ms=1000)
+        # Use run_command to execute and project events
+        from core.command import run_command
+        updated_db, result = run_command(handler, command, input_data, db, time_now_ms=1000)
         
-        # Update db reference
-        if 'db' in result:
-            # The result already has db, use that
-            db.update(result['db'])
-        else:
-            # Update db with the modified version from run_command
-            db.clear()
-            db.update(updated_db)
+        # Update db reference - db is already updated by run_command
+        # The updated_db returned is the same reference
         
         # Validate output against schema if defined
         is_valid, error = validate_command_output(handler, command, result)
         if not is_valid:
             raise ValueError(f"Output validation failed: {error}")
+        
+        # Convert db in result to dict for comparison
+        if 'db' in result and hasattr(result['db'], 'to_dict'):
+            result['db'] = result['db'].to_dict()
         
         return result
     
@@ -269,35 +304,7 @@ class TestRunner:
                 for key, value in given["env"].items():
                     os.environ[key] = value
             
-            # Handle setup field for test data generation
-            if "setup" in given and given["setup"].get("type") == "generate_encrypted_blob":
-                setup = given["setup"]
-                # Import the helper function from process_incoming
-                import importlib.util
-                import sys
-                protocol_path = handler_file.split('/handlers/')[0]
-                module_path = os.path.join(protocol_path, "handlers/incoming/process_incoming.py")
-                spec = importlib.util.spec_from_file_location("process_incoming", module_path)
-                module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
-                
-                # Generate the encrypted blob
-                encrypted_blob = module.create_encrypted_blob(
-                    setup["inner_data"],
-                    setup["inner_key"],
-                    setup["outer_key"]
-                )
-                
-                # Add to incoming queue
-                if "db" not in given:
-                    given["db"] = {}
-                if "incoming" not in given["db"]:
-                    given["db"]["incoming"] = []
-                given["db"]["incoming"].append({
-                    "data": encrypted_blob,
-                    "origin": "test_setup",
-                    "received_at": given["params"].get("time_now_ms", 1000)
-                })
+            # Tests should provide encrypted data directly, not use setup generation
             
             # Execute command
             # Extract handler name from file path
@@ -320,14 +327,36 @@ class TestRunner:
                 "input": given["params"]
             }
             
-            db = given.get("db", {})
-            identity = given.get("identity", "test-user")
+            # Initialize db using persistent database
+            from core.db import create_db
+            # Use a unique database for each test to avoid conflicts
+            import uuid
+            test_id = str(uuid.uuid4())[:8]
+            base_test_db = os.environ.get('TEST_DB_PATH', ':memory:')
+            if base_test_db != ':memory:':
+                # Make it unique for this test
+                test_db_path = base_test_db.replace('.db', f'_{test_id}.db')
+            else:
+                test_db_path = base_test_db
+            
+            db = create_db(db_path=test_db_path)
+            
+            # Store the path for cleanup
+            self._current_test_db = test_db_path
+            
+            # Initialize db with given data
+            given_db = given.get("db", {})
+            for key, value in given_db.items():
+                db[key] = value
+            
             try:
-                result = self.execute_command(cmd, identity, db)
+                result = self.execute_command(cmd, db)
                 
                 # Apply the command's db changes if any
                 if "db" in result:
-                    db = result["db"]
+                    # Update the persistent db with changes
+                    for key, value in result["db"].items():
+                        db[key] = value
             except Exception as e:
                 self.log(f"Command execution failed: {str(e)}", "ERROR")
                 # For crypto-related failures, add more context
@@ -376,12 +405,26 @@ class TestRunner:
             # Check db state if specified
             db_matches = True
             if "db" in then:
-                db_result = {"db": db}
+                # Convert persistent db to dict for comparison
+                db_dict = db.to_dict() if hasattr(db, 'to_dict') else db
+                db_result = {"db": db_dict}
                 matches, path, exp_val, act_val = self.subset_match(db_result, {"db": then["db"]})
                 if not matches:
                     self.log(f"Mismatch at {path}: expected {exp_val}, got {act_val}", "ERROR")
                     db_matches = False
             
+            # Close database before returning
+            if hasattr(db, 'close'):
+                db.close()
+            
+            # Clean up test database file
+            if hasattr(self, '_current_test_db') and self._current_test_db != ':memory:':
+                if os.path.exists(self._current_test_db):
+                    try:
+                        os.remove(self._current_test_db)
+                    except:
+                        pass
+                
             if return_matches and db_matches:
                 return {"scenario": scenario_name, "passed": True, "logs": self.logs}
             else:
@@ -478,6 +521,7 @@ class TestRunner:
             
         except Exception as e:
             self.log(f"Failed to load test file: {str(e)}", "ERROR")
+            self.log(f"Traceback: {traceback.format_exc()}", "ERROR")
             return [{
                 "file": test_path,
                 "scenario": "File load error",
@@ -501,6 +545,15 @@ class TestRunner:
         handlers_path = os.path.join(protocol_path, "handlers")
         if os.path.exists(handlers_path):
             os.environ["HANDLER_PATH"] = handlers_path
+        
+        # Use a protocol-specific test database file
+        # This ensures each protocol gets its own schema
+        test_db_path = f".test_{protocol_name}.db"
+        os.environ["TEST_DB_PATH"] = test_db_path
+        
+        # Clean up any existing test database
+        if os.path.exists(test_db_path):
+            os.remove(test_db_path)
         
         # Check for schema.sql and validate if present
         schema_file = os.path.join(protocol_path, "schema.sql")
@@ -572,6 +625,8 @@ class TestRunner:
                     test_path = os.path.join(root, file)
                     results = self.run_file(test_path)
                     protocol_results.extend(results)
+                    
+                    # Don't clean up here - we'll clean up at the start of each protocol instead
         
         # Summary for this protocol
         passed = sum(1 for r in protocol_results if r["passed"])
