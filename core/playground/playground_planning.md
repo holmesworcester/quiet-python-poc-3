@@ -3,6 +3,10 @@
 ## Overview
 A general-purpose TUI/CLI framework for interacting with protocols, designed to be LLM-testable and configurable via YAML. This tool will provide a flexible interface for testing and exploring protocol functionality through multiple windows with command-based interaction.
 
+## Second iteration
+
+Use case: I want to be able to run playground.py as a standalone tool and switch between all .yaml files in the different protocols. It should collect all *.yaml files from protocol/[NAME]/playgrounds in each protocol. It should display them sorted by protocol with protocol names as list dividers, and when i save or save-as, pick the protocol. it should let me make a new one in each protocol. Let's rename it to playgrounds.py to be consistent too.
+
 ## Core Requirements
 
 ### 1. TUI and CLI Interface
@@ -243,3 +247,68 @@ windows:
 - Export to various formats
 - Multi-protocol support
 - Remote playground connections
+## UI text mockups (several variants)
+
+Below are several text-based mockups of the UI for the "second iteration" showing different layouts and focused states. These are ASCII/text screenshots intended for planning, tests, and documentation.
+
+1) 2x2 grid - default view
+
+--------------------------------------------------------------------------------
+| Header: playgrounds.py - protocol: protocols/message_via_tor                 |
+--------------------------------------------------------------------------------
+| Identities               | Messages                    |                  |
+| ------------------------ | ---------------------------|  (empty slot)    |
+| *Alice                   | [09:12] Alice -> Bob: Hi    |                  |
+|  Bob                    >| [09:13] Bob -> Alice: Hey   |                  |
+|  Charlie                 | ---------------------------|                  |
+|                          | /api GET /messages?ident=1  |                  |
+| [Input: /api ]__________ | [Input: Hello, press Enter] | [Input: ]        |
+--------------------------------------------------------------------------------
+| Events                   | Console                     | Footer: [q] quit|
+--------------------------------------------------------------------------------
+
+Notes: left pane is a selectable list with current selection at Alice. Messages pane shows formatted map output. Inputs are per-window.
+
+2) 2x2 grid - compose focused (with modal-like quick help shown inline)
+
+--------------------------------------------------------------------------------
+| Header: playgrounds.py - Compose Mode                                      |
+--------------------------------------------------------------------------------
+| Identities               | Messages                    | Compose          |
+| ------------------------ | ---------------------------| -----------------|
+|  Alice                   | [09:12] Alice -> Bob: Hi    | To: [Bob]        |
+|  Bob                    >| [09:13] Bob -> Alice: Hey   | Message: [       ]|
+|  Charlie                 | [09:14] System: tick        | [ Send ] [Esc]   |
+|                          | ---------------------------| -----------------|
+| [Input: /select 1]______ | [Input: /api GET /msgs]____| (Focused)        |
+--------------------------------------------------------------------------------
+| Events (auto-refresh 2s) | Console (log)              | Footer: /help    |
+--------------------------------------------------------------------------------
+
+3) Single row 1x3 - compact horizontal (wide terminal)
+
+--------------------------------------------------------------------------------
+| Header: playgrounds.py - compact                                           |
+--------------------------------------------------------------------------------
+| Identities | Messages (scrolling)                   | Console (commands) |
+| ---------- | -------------------------------------- | -------------------|
+| Alice      | [09:12] Alice -> Bob: Hi               | /api GET /identities|
+| Bob        | [09:13] Bob -> Alice: Hey              | /alias new /api ... |
+| Charlie    | [09:14] Alice: Are you online?         | /save demo          |
+| [Input]    | [Input]                                | [Input - command]   |
+--------------------------------------------------------------------------------
+
+4) Overview mode - 3x3 grid for many windows / monitoring
+
+--------------------------------------------------------------------------------
+| Header: playgrounds.py - Overview                                            |
+--------------------------------------------------------------------------------
+| Identities | Messages  | Events     | Metrics   | DB | Console | Network | Sub | Extra |
+| ---------- | --------- | ---------- | --------- | -- | ------- | ------- | --- | ----- |
+| Alice      | msg log   | event log  | cpu=12%   | OK | /api    | pending | ..  |       |
+| Bob        | (tail)    | (tail)     | mem=400M  | OK | history | /status | ..  |       |
+| Charlie    |           |            | net=2MB/s | OK |         |         |     |       |
+| [Inputs per slot...]                                                              |
+--------------------------------------------------------------------------------
+
+Usage: these mockups serve as a guide for writing snapshot tests and for designing the layout switching and focus behaviors. They should be translated into deterministic text snapshots in tests (fixed width/height, stable timestamps replaced with tokens).
