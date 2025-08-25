@@ -1,3 +1,5 @@
+todo: incoming_handler.json has bad smell
+
 Notes:
 
 - I settled on the overall project structure in a previous iteration

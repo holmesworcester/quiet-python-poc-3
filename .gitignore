@@ -70,3 +70,4 @@ Thumbs.db
 .test_*.db-shm
 .test_*.db-wal
 api.db
+demo.db

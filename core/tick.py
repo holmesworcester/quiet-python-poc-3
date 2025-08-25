@@ -1,7 +1,5 @@
-import importlib.util
 import os
-from core.handler_discovery import get_handler_path
-from core.handle import handle
+from core.command import run_command
 
 
 def tick(db, time_now_ms=None):
@@ -15,55 +13,7 @@ def tick(db, time_now_ms=None):
     return db
 
 
-def run_command(handler_name, command_name, input_data, identity, db, time_now_ms=None):
-    """
-    Execute a command and project any returned events.
-    Returns the modified db and command result.
-    """
-    # Get handler base path
-    handler_base = os.environ.get("HANDLER_PATH", "handlers")
-    
-    # Get command module path
-    module_path = get_handler_path(handler_name, command_name, handler_base)
-    if not module_path:
-        raise ValueError(f"Command not found: {handler_name}/{command_name}")
-    
-    # Load and execute command
-    spec = importlib.util.spec_from_file_location(command_name, module_path)
-    command_module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(command_module)
-    
-    # Execute command
-    try:
-        result = command_module.execute(input_data, identity, db)
-    except Exception as e:
-        # Add context to the error
-        import traceback
-        error_msg = f"Error in {handler_name}.{command_name}: {str(e)}"
-        if os.environ.get("TEST_MODE"):
-            print(f"[tick] {error_msg}")
-            print(f"[tick] Traceback: {traceback.format_exc()}")
-        raise Exception(error_msg) from e
-    
-    # If command returned db modifications, apply them
-    if isinstance(result, dict) and 'db' in result:
-        db = result['db']
-    
-    # Project any new events returned by the command
-    if isinstance(result, dict) and 'newEvents' in result:
-        for event in result['newEvents']:
-            # Create envelope for the event
-            envelope = {
-                'data': event,
-                'metadata': {
-                    'selfGenerated': True,
-                    'sender': identity
-                }
-            }
-            # Project the event
-            db = handle(db, envelope, time_now_ms)
-    
-    return db, result
+# run_command has been moved to core.command module
 
 
 def run_all_jobs(db, time_now_ms):
@@ -96,9 +46,8 @@ def run_all_jobs(db, time_now_ms):
             
         try:
             # Execute the job command using run_command
-            # Jobs run without identity context
             input_data = {"time_now_ms": time_now_ms}
-            db, result = run_command(handler_name, job_command, input_data, None, db, time_now_ms)
+            db, result = run_command(handler_name, job_command, input_data, db, time_now_ms)
             
         except Exception as e:
             # Log but don't crash - jobs should be resilient

@@ -17,7 +17,7 @@ import argparse
 import re
 from pathlib import Path
 from urllib.parse import parse_qs
-from core.tick import run_command
+from core.command import run_command
 
 def load_yaml(filepath):
     """Load and parse a YAML file."""
@@ -104,48 +104,19 @@ def format_response(result, method, status_code=200):
         # Use the explicit api_response
         response["body"] = result['api_response']
     elif isinstance(result, dict):
-        # Legacy format - remove internal fields
+        # Remove internal fields from response
         body = {k: v for k, v in result.items() 
                 if k not in ['db', 'newEvents', 'newlyCreatedEvents']}
         
-        # If command returned newlyCreatedEvents, extract useful info
-        if 'newlyCreatedEvents' in result and result['newlyCreatedEvents']:
-            events = result['newlyCreatedEvents']
-            if method.upper() == 'POST' and len(events) == 1:
-                # For single creation, return the created object
-                event = events[0]
-                if event.get('type') == 'identity':
-                    body = {
-                        "identityId": event.get("pubkey"),  # pubkey is the identityId
-                        "publicKey": event.get("pubkey")
-                    }
-                elif event.get('type') == 'message':
-                    # Use fields from result if available, else from event
-                    body = {
-                        "messageId": result.get("messageId", event.get("messageId")),
-                        "text": event.get("text")
-                    }
-                elif event.get('type') == 'peer':
-                    body = {
-                        "peerId": event.get("pubkey")
-                    }
-            else:
-                # For multiple events, return count
-                body["eventsCreated"] = len(events)
-        
-        # Special handling for list operations
-        if not body and 'messages' in result:
-            body = {"messages": result['messages']}
-        elif not body and 'identities' in result:
-            body = {"identities": result['identities']}
-        
-        response["body"] = body
+        # If handler wants to format response, let it do so
+        # Otherwise return the cleaned result as-is
+        response["body"] = body if body else result
     else:
         response["body"] = result
     
     return response
 
-def execute_api(protocol_name, method, path, data=None, params=None, identity=None):
+def execute_api(protocol_name, method, path, data=None, params=None):
     """Execute an API request against a protocol."""
     protocol_path = Path("protocols") / protocol_name
     
@@ -201,30 +172,37 @@ def execute_api(protocol_name, method, path, data=None, params=None, identity=No
         os.environ["CRYPTO_MODE"] = "dummy"
         
         try:
-            # Use provided db state or initialize empty db
+            # Use persistent database for tick operation
+            from core.db import create_db
+            import copy
+            
+            # Get DB path from environment or use a default
+            db_path = os.environ.get('API_DB_PATH', 'api.db')
+            
+            # Create database with protocol name for schema loading
+            db = create_db(db_path=db_path, protocol_name=protocol_name)
+            
+            # If data provided, update the persistent db
             if data and "db" in data:
-                db = data["db"]
-            else:
-                db = {
-                    "eventStore": {},
-                    "state": {},
-                    "incoming": [],
-                    "outgoing": [],
-                    "blocked": []
-                }
+                provided_db = data["db"]
+                # Update persistent db with provided data
+                for key, value in provided_db.items():
+                    db[key] = value
             
             # Store before state for comparison
-            import copy
-            before_state = copy.deepcopy(db)
+            before_state = copy.deepcopy(db.to_dict())
             
             # Get time from request
             time_now_ms = None
             if data and "time_now_ms" in data:
                 time_now_ms = data["time_now_ms"]
             
-            # Run tick
+            # Run tick with persistent db
             from core.tick import tick
             updated_db = tick(db, time_now_ms=time_now_ms)
+            
+            # Convert persistent db to dict for response
+            after_state = updated_db.to_dict() if hasattr(updated_db, 'to_dict') else updated_db
             
             # Return before/after states for demo
             return {
@@ -234,8 +212,8 @@ def execute_api(protocol_name, method, path, data=None, params=None, identity=No
                     "jobsRun": 5,  # Number of handlers with jobs
                     "eventsProcessed": 0,  # Would need to track this
                     "beforeState": before_state,
-                    "afterState": updated_db,
-                    "db": updated_db  # Return updated db for persistence
+                    "afterState": after_state,
+                    "db": after_state  # Return updated db for persistence
                 }
             }
             
@@ -278,34 +256,30 @@ def execute_api(protocol_name, method, path, data=None, params=None, identity=No
     os.environ["CRYPTO_MODE"] = "dummy"
     
     try:
-        # Use provided db state or initialize empty db
+        # Use persistent database
+        from core.db import create_db
+        
+        # Get DB path from environment or use a default
+        db_path = os.environ.get('API_DB_PATH', 'api.db')
+        
+        # Create database with protocol name for schema loading
+        db = create_db(db_path=db_path, protocol_name=protocol_name)
+        
+        # If data provided, update the persistent db
         if data and "db" in data:
-            db = data["db"]
-        else:
-            db = {
-                "eventStore": {},
-                "state": {},
-                "incoming": [],
-                "outgoing": [],
-                "blocked": []
-            }
+            provided_db = data["db"]
+            # Update persistent db with provided data
+            for key, value in provided_db.items():
+                db[key] = value
         
         # Execute command
-        # For endpoints with identityId in path, use that as the identity
-        identity_to_use = identity
-        if path_params and 'identityId' in path_params:
-            identity_to_use = path_params['identityId']
+        db, result = run_command(handler_name, command_name, input_data, db)
         
-        db, result = run_command(handler_name, command_name, input_data, identity_to_use, db)
-        
-        # Format response and include updated db for persistence
+        # Format response
         status_code = 201 if method.upper() == "POST" else 200
         response = format_response(result, method, status_code)
         
-        # Add db to response body for demo persistence
-        if "body" not in response:
-            response["body"] = {}
-        response["body"]["db"] = db
+        # Don't add db to response - we're using persistent database now
         
         return response
         
@@ -335,7 +309,6 @@ def main():
     parser.add_argument("path", help="Request path (e.g., /messages)")
     parser.add_argument("--data", help="Request body as JSON string")
     parser.add_argument("--params", help="Query parameters as JSON string")
-    parser.add_argument("--identity", help="Identity to use for the request")
     
     args = parser.parse_args()
     
@@ -363,8 +336,7 @@ def main():
         args.method,
         args.path,
         data=data,
-        params=params,
-        identity=args.identity
+        params=params
     )
     
     # Print response

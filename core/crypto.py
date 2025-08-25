@@ -24,28 +24,29 @@ def get_crypto_mode():
     
     return mode
 
-def get_keypair(identity):
+# Core crypto primitives for framework use
+
+def generate_keypair():
     """
-    Get or generate keypair for identity.
+    Generate a new keypair.
     In dummy mode, returns predictable keys.
     """
     if get_crypto_mode() == "dummy":
-        # Dummy mode - predictable keys based on identity
+        # Dummy mode - generate a random identifier
+        import random
+        import string
+        rand_id = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
         return {
-            "public": f"dummy_pubkey_{identity}",
-            "private": f"dummy_privkey_{identity}"
+            "public": f"dummy_pubkey_{rand_id}",
+            "private": f"dummy_privkey_{rand_id}"
         }
     else:
-        # Real mode - would load from keystore
-        # For now, generate new
-        seed = hashlib.blake2b(identity.encode(), digest_size=32).digest()
-        signing_key = nacl.signing.SigningKey(seed)
+        # Real mode - generate new keys
+        signing_key = nacl.signing.SigningKey.generate()
         return {
             "public": signing_key.verify_key.encode(nacl.encoding.HexEncoder).decode(),
             "private": signing_key.encode(nacl.encoding.HexEncoder).decode()
         }
-
-# Core crypto primitives for framework use
 
 def sign(data, private_key):
     """
