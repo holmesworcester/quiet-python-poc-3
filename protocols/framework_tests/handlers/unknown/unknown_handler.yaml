@@ -12,6 +12,11 @@
 # - Debugging aid: Helps identify new event types in the network
 # ============================================================================
 
+# Common anchors for reused data
+anchors:
+  # Common empty states
+  emptyState: &emptyState {}
+
 type: unknown  # Handler type identifier
 
 # ============================================================================
@@ -29,7 +34,7 @@ projector:
     # Tests storing an unknown event type with full decryption metadata
     - given:
         db:
-          state: {}  # Empty initial state
+          state: *emptyState  # Empty initial state
         envelope:
           data:
             type: unrecognized_type  # Event type not in registry
@@ -129,7 +134,7 @@ commands:
       # Test with no unknown events
       - given:
           db:
-            state: {}  # No unknown events
+            state: *emptyState  # No unknown events
           params:
             current_time_ms: 100000000
         then:

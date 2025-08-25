@@ -11,6 +11,17 @@
 # - Routes self-generated messages to outgoing queue
 # ===========================================================================================
 
+# Common anchors for reused data
+anchors:
+  # Common empty states
+  emptyMessages: &emptyMessages []
+  emptyPeers: &emptyPeers []
+  emptyOutgoing: &emptyOutgoing []
+  
+  # Common test environment
+  cryptoDummy: &cryptoDummy
+    CRYPTO_MODE: dummy
+
 type: message
 
 # ===========================================================================================
@@ -30,7 +41,7 @@ projector:
     - given:
         db:
           state:
-            messages: []
+            messages: *emptyMessages
         envelope:
           data:
             type: message
@@ -59,7 +70,7 @@ projector:
               - pubkey: sender1
                 name: Sender 1
                 received_by: test_identity
-            messages: []
+            messages: *emptyMessages
             identities:
               - pubkey: test_identity
                 privkey: test_privkey
@@ -95,8 +106,8 @@ projector:
       given:
         db:
           state:
-            peers: []  # No known peers
-            messages: []
+            peers: *emptyPeers  # No known peers
+            messages: *emptyMessages
         envelope:
           data:
             type: message
@@ -123,7 +134,7 @@ projector:
       given:
         db:
           state:
-            messages: []
+            messages: *emptyMessages
         envelope:
           data:
             type: message
@@ -148,7 +159,7 @@ projector:
       given:
         db:
           state:
-            messages: []
+            messages: *emptyMessages
             peers:
               - pubkey: peerA
                 name: Peer A
@@ -181,7 +192,7 @@ projector:
       given:
         db:
           state:
-            messages: []
+            messages: *emptyMessages
             peers:
               - pubkey: peerA
                 name: Peer A
@@ -196,7 +207,7 @@ projector:
       then:
         db:
           state:
-            messages: []  # Message rejected
+            messages: *emptyMessages  # Message rejected
             
     # -------------------------------------------------------------------------------------
     # Test: Non-Self-Generated Message Routing
@@ -205,8 +216,8 @@ projector:
       given:
         db:
           state:
-            messages: []
-            outgoing: []
+            messages: *emptyMessages
+            outgoing: *emptyOutgoing
             peers:
               - pubkey: peerA
                 name: Peer A
@@ -232,7 +243,7 @@ projector:
                 sender: peerA
                 timestamp: "*"
                 received_by: peerB
-            outgoing: []  # Not added to outgoing queue
+            outgoing: *emptyOutgoing  # Not added to outgoing queue
             
     # -------------------------------------------------------------------------------------
     # Test: Unknown Peer Detection
@@ -241,8 +252,8 @@ projector:
       given:
         db:
           state:
-            messages: []
-            peers: []
+            messages: *emptyMessages
+            peers: *emptyPeers
         envelope:
           data:
             type: message
@@ -264,7 +275,7 @@ projector:
                 sig: xyz
                 timestamp: "*"
                 unknown_peer: true  # Marked as unknown
-            peers: []
+            peers: *emptyPeers
             
     # -------------------------------------------------------------------------------------
     # Test: Known Peer Detection
@@ -273,7 +284,7 @@ projector:
       given:
         db:
           state:
-            messages: []
+            messages: *emptyMessages
             peers:
               - pubkey: known_pub
                 name: Known Peer
@@ -313,7 +324,7 @@ projector:
       given:
         db:
           state:
-            messages: []
+            messages: *emptyMessages
             peers:
               # peer1 is known to identity1 but not identity2
               - pubkey: peer1
@@ -371,11 +382,10 @@ commands:
         given:
           db:
             state:
-              peers: []  # No peers to send to
+              peers: *emptyPeers  # No peers to send to
           params:
             text: Hello
-          env:
-            CRYPTO_MODE: dummy  # Simplified crypto for testing
+          env: *cryptoDummy  # Simplified crypto for testing
         then:
           return:
             api_response:
@@ -413,8 +423,7 @@ commands:
           params:
             text: Hello peers
           identity: sender
-          env:
-            CRYPTO_MODE: dummy
+          env: *cryptoDummy
         then:
           return:
             api_response:
@@ -460,13 +469,12 @@ commands:
                 - pubkey: charlie_pub
                   name: Charlie
                   received_by: dummy_pubkey_alice
-              messages: []
+              messages: *emptyMessages
           params:
             text: Hello via ticks
             time_now_ms: 1000
           identity: alice
-          env:
-            CRYPTO_MODE: dummy
+          env: *cryptoDummy
         ticks: 2  # Process through two tick cycles
         then:
           return:
@@ -479,7 +487,7 @@ commands:
               messages:
                 - text: Hello via ticks
                   sender: "*"
-              outgoing: []  # Queue cleared after delivery
+              outgoing: *emptyOutgoing  # Queue cleared after delivery
               
   # -----------------------------------------------------------------------------------------
   # List Messages

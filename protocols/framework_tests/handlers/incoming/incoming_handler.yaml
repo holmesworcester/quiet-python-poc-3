@@ -13,6 +13,35 @@
 # - Unknown event type handling
 # ============================================================================
 
+# Common anchors for reused data
+anchors:
+  # Environment settings
+  cryptoDummy: &cryptoDummy
+    CRYPTO_MODE: dummy
+  cryptoReal: &cryptoReal
+    CRYPTO_MODE: real
+    
+  # Common empty states
+  emptyMessages: &emptyMessages []
+  emptyIncoming: &emptyIncoming []
+  emptyKeyMap: &emptyKeyMap {}
+  emptyPendingMissingKey: &emptyPendingMissingKey []
+  emptyUnknownEvents: &emptyUnknownEvents []
+  
+  # Common test data
+  alice: &alice alice
+  
+  # Common key hashes (64 chars)
+  outerKeyHash1: &outerKeyHash1 outerKeyHash1234567890123456789012345678901234567890123456789012
+  unknownKeyHash: &unknownKeyHash unknownKeyHash12345678901234567890123456789012345678901234567890
+  validKeyHash: &validKeyHash validKeyHash1234567890123456789012345678901234567890123456789012345
+  blake2bHash1: &blake2bHash1 3083e1ce982abd7f59235aa1ea3c97046562c75205d4dab8affd2f3600d79958
+  blake2bHash2: &blake2bHash2 69c6718bad81422d4d230563e6926cffcfb5375991806b1ac1c5c3998bbed949
+  
+  # Common keys
+  testKey1: &testKey1 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  testKey2: &testKey2 fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
+
 type: incoming            # Handler type identifier
 version: 1                # Handler version
 description: Processes incoming messages from network and routes to appropriate handlers
@@ -39,31 +68,31 @@ commands:
           params:
             time_now_ms: 1000
           identity: null
-          env:
-            CRYPTO_MODE: dummy    # Use predictable mock crypto
+          env: *cryptoDummy    # Use predictable mock crypto
           db:
             incoming:
               # Two-layer encrypted format: outerKeyHash (64 chars) + encrypted JSON
-              - data: 'outerKeyHash1234567890123456789012345678901234567890123456789012{"innerHash":"innerKeyHash123","data":"{\\"type\\":\\"message\\",\\"text\\":\\"Hello\\",\\"sender\\":\\"alice\\"}"}'
+              - data: |
+                  outerKeyHash1234567890123456789012345678901234567890123456789012{"innerHash":"innerKeyHash123","data":"{\"type\":\"message\",\"text\":\"Hello\",\"sender\":\"alice\"}"}
                 origin: peer1
                 received_at: 1000
             state:
               key_map:
                 # Both decryption keys available
-                outerKeyHash1234567890123456789012345678901234567890123456789012: outer_key
+                *outerKeyHash1: outer_key
                 innerKeyHash123: inner_key
-              messages: []
+              messages: *emptyMessages
               known_senders:
-                - alice           # Alice is a known sender
+                - *alice           # Alice is a known sender
         then:
           return:
             db:
-              incoming: []        # Message processed and removed
+              incoming: *emptyIncoming        # Message processed and removed
               state:
                 messages:
                   # Message successfully decrypted and projected
                   - text: Hello
-                    sender: alice
+                    sender: *alice
 
       # ========================================================================
       # Real Crypto Mode Tests
@@ -76,18 +105,17 @@ commands:
           params:
             time_now_ms: 1000
           identity: null
-          env:
-            CRYPTO_MODE: real     # Use real NaCl crypto
+          env: *cryptoReal     # Use real NaCl crypto
           db:
-            incoming: []
+            incoming: *emptyIncoming
             state:
               key_map:
                 # Blake2b hashes of the encryption keys
-                3083e1ce982abd7f59235aa1ea3c97046562c75205d4dab8affd2f3600d79958: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-                69c6718bad81422d4d230563e6926cffcfb5375991806b1ac1c5c3998bbed949: fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
-              messages: []
+*blake2bHash1: *testKey1
+                *blake2bHash2: *testKey2
+              messages: *emptyMessages
               known_senders:
-                - alice
+                - *alice
           setup:
             # Special setup to generate encrypted test data
             type: generate_encrypted_blob
@@ -95,16 +123,16 @@ commands:
               type: message
               text: Hello
               sender: alice
-            inner_key: fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
-            outer_key: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+            inner_key: *testKey2
+            outer_key: *testKey1
         then:
           return:
             db:
-              incoming: []
+              incoming: *emptyIncoming
               state:
                 messages:
                   - text: Hello
-                    sender: alice
+                    sender: *alice
 
       # ========================================================================
       # Missing Key Tests
@@ -116,8 +144,7 @@ commands:
           params:
             time_now_ms: 2000
           identity: null
-          env:
-            CRYPTO_MODE: dummy
+          env: *cryptoDummy
           db:
             incoming:
               # Unknown outer key hash
@@ -125,16 +152,16 @@ commands:
                 origin: peer2
                 received_at: 2000
             state:
-              key_map: {}         # No keys available
-              pending_missing_key: []
+              key_map: *emptyKeyMap         # No keys available
+              pending_missing_key: *emptyPendingMissingKey
         then:
           return:
             db:
-              incoming: []
+              incoming: *emptyIncoming
               state:
                 pending_missing_key:
                   # Entry created for missing key
-                  - missingHash: unknownKeyHash12345678901234567890123456789012345678901234567890
+                  - missingHash: *unknownKeyHash
                     inNetwork: false  # Not validated
 
       # Test 4: Missing outer key (real crypto)
@@ -143,8 +170,7 @@ commands:
           params:
             time_now_ms: 2000
           identity: null
-          env:
-            CRYPTO_MODE: real
+          env: *cryptoReal
           db:
             incoming:
               # 64-char hex hash + encrypted data
@@ -152,12 +178,12 @@ commands:
                 origin: peer2
                 received_at: 2000
             state:
-              key_map: {}
-              pending_missing_key: []
+              key_map: *emptyKeyMap
+              pending_missing_key: *emptyPendingMissingKey
         then:
           return:
             db:
-              incoming: []
+              incoming: *emptyIncoming
               state:
                 pending_missing_key:
                   - missingHash: 1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
@@ -169,22 +195,22 @@ commands:
           params:
             time_now_ms: 3000
           identity: null
-          env:
-            CRYPTO_MODE: dummy
+          env: *cryptoDummy
           db:
             incoming:
               # Outer key available but inner key missing
-              - data: 'outerKeyHash1234567890123456789012345678901234567890123456789012{"innerHash":"unknownInnerKey","data":"encrypted_inner"}'
+              - data: |
+                  outerKeyHash1234567890123456789012345678901234567890123456789012{"innerHash":"unknownInnerKey","data":"encrypted_inner"}
                 origin: peer3
                 received_at: 3000
             state:
               key_map:
-                outerKeyHash1234567890123456789012345678901234567890123456789012: outer_key
-              pending_missing_key: []
+                *outerKeyHash1: outer_key
+              pending_missing_key: *emptyPendingMissingKey
         then:
           return:
             db:
-              incoming: []
+              incoming: *emptyIncoming
               state:
                 pending_missing_key:
                   - missingHash: unknownInnerKey
@@ -196,8 +222,7 @@ commands:
           params:
             time_now_ms: 3000
           identity: null
-          env:
-            CRYPTO_MODE: real
+          env: *cryptoReal
           db:
             incoming:
               # Real encrypted blob with missing inner key
@@ -208,11 +233,11 @@ commands:
               key_map:
                 # Only outer key available
                 3083e1ce982abd7f59235aa1ea3c97046562c75205d4dab8affd2f3600d79958: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-              pending_missing_key: []
+              pending_missing_key: *emptyPendingMissingKey
         then:
           return:
             db:
-              incoming: []
+              incoming: *emptyIncoming
               state:
                 pending_missing_key:
                   - missingHash: unknownInnerKeyHash1234567890123456789012345678901234567890123456
@@ -228,8 +253,7 @@ commands:
           params:
             time_now_ms: 4000
           identity: null
-          env:
-            CRYPTO_MODE: dummy
+          env: *cryptoDummy
           db:
             incoming:
               # Valid key but invalid JSON content
@@ -238,11 +262,11 @@ commands:
                 received_at: 4000
             state:
               key_map:
-                validKeyHash1234567890123456789012345678901234567890123456789012345: valid_key
+                *validKeyHash: valid_key
         then:
           return:
             db:
-              incoming: []        # Message dropped silently
+              incoming: *emptyIncoming        # Message dropped silently
 
       # Test 8: Invalid encrypted data (real crypto)
       - description: Invalid data with real crypto drops (no nonce)
@@ -250,8 +274,7 @@ commands:
           params:
             time_now_ms: 4000
           identity: null
-          env:
-            CRYPTO_MODE: real
+          env: *cryptoReal
           db:
             incoming:
               # Invalid format - missing nonce
@@ -264,7 +287,7 @@ commands:
         then:
           return:
             db:
-              incoming: []
+              incoming: *emptyIncoming
 
       # ========================================================================
       # Pre-decrypted Envelope Tests
@@ -276,8 +299,7 @@ commands:
           params:
             time_now_ms: 5000
           identity: null
-          env:
-            CRYPTO_MODE: dummy
+          env: *cryptoDummy
           db:
             incoming:
               # Envelope format indicates already decrypted
@@ -289,17 +311,17 @@ commands:
                 metadata:
                   selfGenerated: true
             state:
-              messages: []
+              messages: *emptyMessages
               known_senders:
-                - alice
+                - *alice
         then:
           return:
             db:
-              incoming: []
+              incoming: *emptyIncoming
               state:
                 messages:
                   - text: Already decrypted
-                    sender: alice
+                    sender: *alice
 
       # Test 10: Already decrypted envelope (real crypto)
       - description: Already decrypted envelope passes through (real crypto)
@@ -307,8 +329,7 @@ commands:
           params:
             time_now_ms: 5000
           identity: null
-          env:
-            CRYPTO_MODE: real
+          env: *cryptoReal
           db:
             incoming:
               - envelope: true
@@ -319,17 +340,17 @@ commands:
                 metadata:
                   selfGenerated: true
             state:
-              messages: []
+              messages: *emptyMessages
               known_senders:
-                - alice
+                - *alice
         then:
           return:
             db:
-              incoming: []
+              incoming: *emptyIncoming
               state:
                 messages:
                   - text: Already decrypted
-                    sender: alice
+                    sender: *alice
 
       # ========================================================================
       # Unknown Event Type Tests
@@ -341,34 +362,33 @@ commands:
           params:
             time_now_ms: 6000
           identity: null
-          env:
-            CRYPTO_MODE: real
+          env: *cryptoReal
           db:
-            incoming: []
+            incoming: *emptyIncoming
             state:
               key_map:
-                3083e1ce982abd7f59235aa1ea3c97046562c75205d4dab8affd2f3600d79958: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-                69c6718bad81422d4d230563e6926cffcfb5375991806b1ac1c5c3998bbed949: fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
-              unknown_events: []
+*blake2bHash1: *testKey1
+                *blake2bHash2: *testKey2
+              unknown_events: *emptyUnknownEvents
           setup:
             type: generate_encrypted_blob
             inner_data:
               type: custom_event_type    # Unrecognized event type
               payload: test data
               sender: alice
-            inner_key: fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
-            outer_key: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+            inner_key: *testKey2
+            outer_key: *testKey1
         then:
           return:
             db:
-              incoming: []
+              incoming: *emptyIncoming
               state:
                 unknown_events:
                   # Event stored as unknown
                   - data:
                       type: custom_event_type
                       payload: test data
-                      sender: alice
+                      sender: *alice
                     metadata: '...'
                     timestamp: 6000
 
@@ -378,14 +398,13 @@ commands:
           params:
             time_now_ms: 7000
           identity: null
-          env:
-            CRYPTO_MODE: real
+          env: *cryptoReal
           db:
-            incoming: []
+            incoming: *emptyIncoming
             state:
               key_map:
                 3083e1ce982abd7f59235aa1ea3c97046562c75205d4dab8affd2f3600d79958: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-              pending_missing_key: []
+              pending_missing_key: *emptyPendingMissingKey
           setup:
             type: generate_encrypted_blob
             inner_data:
@@ -398,7 +417,7 @@ commands:
         then:
           return:
             db:
-              incoming: []
+              incoming: *emptyIncoming
               state:
                 pending_missing_key:
                   # Hash of the missing inner key

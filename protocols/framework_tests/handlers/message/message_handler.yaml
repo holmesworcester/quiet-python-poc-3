@@ -12,6 +12,14 @@
 # - Event store persistence
 # ============================================================================
 
+# Common anchors for reused data
+anchors:
+  # Common empty states
+  emptyEventStore: &emptyEventStore []
+  emptyMessages: &emptyMessages []
+  emptyKnownSenders: &emptyKnownSenders []
+  emptyDb: &emptyDb {}
+
 # ============================================================================
 # Message Schema Definition
 # ============================================================================
@@ -50,7 +58,7 @@ projector:
     - description: Valid sender's message is projected to state
       given:
         db:
-          eventStore: []      # Empty event store
+          eventStore: *emptyEventStore  # Empty event store
           state:
             known_senders:
               - pubkey1       # Pre-registered valid sender
@@ -79,7 +87,7 @@ projector:
       given:
         db:
           state:
-            known_senders: []  # No known senders
+            known_senders: *emptyKnownSenders  # No known senders
         newEvent:
           type: message
           sender: unknown     # Not in known_senders list
@@ -92,7 +100,7 @@ projector:
               text: Invalid
               sender: unknown
           state:
-            messages: []      # NOT projected to state
+            messages: *emptyMessages  # NOT projected to state
 
 # ============================================================================
 # Commands
@@ -174,7 +182,7 @@ commands:
       # Basic message creation test
       - description: Create command returns new message event
         given:
-          db: {}              # Empty database
+          db: *emptyDb  # Empty database
           params:
             text: Hello       # Message content
         then:

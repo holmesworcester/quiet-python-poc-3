@@ -12,6 +12,28 @@
 # consistent behavior across development and production environments.
 # ============================================================================
 
+# Common anchors for reused data
+anchors:
+  # Environment settings
+  cryptoDummy: &cryptoDummy
+    CRYPTO_MODE: dummy
+  cryptoReal: &cryptoReal
+    CRYPTO_MODE: real
+  
+  # Common test data
+  testUser: &testUser test-user
+  emptyDb: &emptyDb {}
+  
+  # Common schema properties
+  stringRequired: &stringRequired
+    type: string
+  stringPattern64Hex: &stringPattern64Hex
+    type: string
+    pattern: ^[a-f0-9]{64}$
+  stringPattern128Hex: &stringPattern128Hex
+    type: string
+    pattern: ^[a-f0-9]{128}$
+
 jsonTestsOnly: true  # This handler only supports JSON-based testing
 
 # ============================================================================
@@ -52,12 +74,11 @@ commands:
       # Dummy mode: predictable outputs for testing
       - description: Sign and verify data successfully (dummy mode)
         given:
-          db: {}
+          db: *emptyDb
           params:
             data: Hello, world!
-          identity: test-user  # User identity for key generation
-          env:
-            CRYPTO_MODE: dummy   # Use mock crypto
+          identity: *testUser  # User identity for key generation
+          env: *cryptoDummy   # Use mock crypto
         then:
           return:
             # Dummy signature includes hash of data for predictability
@@ -69,12 +90,11 @@ commands:
       # Real crypto mode: actual Ed25519 signatures
       - description: Sign and verify data successfully (real crypto)
         given:
-          db: {}
+          db: *emptyDb
           params:
             data: Hello, world!
-          identity: test-user
-          env:
-            CRYPTO_MODE: real    # Use real crypto
+          identity: *testUser
+          env: *cryptoReal    # Use real crypto
         then:
           return:
             # Real signature (128 hex chars for Ed25519)
@@ -129,12 +149,11 @@ commands:
       # Dummy mode: predictable encryption
       - description: Encrypt and decrypt data successfully (dummy mode)
         given:
-          db: {}
+          db: *emptyDb
           params:
             data: Secret message
-          identity: test-user
-          env:
-            CRYPTO_MODE: dummy
+          identity: *testUser
+          env: *cryptoDummy
         then:
           return:
             encrypted:
@@ -148,14 +167,13 @@ commands:
       # Real crypto with provided key
       - description: Encrypt and decrypt with provided key (real crypto)
         given:
-          db: {}
+          db: *emptyDb
           params:
             data: Secret message
             # 32-byte key for NaCl SecretBox (64 hex chars)
             key: c954d2c2ec1062592b701c8002d76bd4e23a1597cb45ad1fb4b5b27a913274ce
-          identity: test-user
-          env:
-            CRYPTO_MODE: real
+          identity: *testUser
+          env: *cryptoReal
         then:
           return:
             encrypted:
@@ -169,13 +187,12 @@ commands:
       # Test with special characters and longer message
       - description: Encrypt longer message with special characters
         given:
-          db: {}
+          db: *emptyDb
           params:
             data: 'This is a longer message with special characters: !@#$%^&*()'
             key: d6f8a3b2c1e9d7f5a4b3c2d1e0f9a8b7c6d5e4f3b2c1d0e9f8a7b6c5d4e3f2a1
-          identity: test-user
-          env:
-            CRYPTO_MODE: real
+          identity: *testUser
+          env: *cryptoReal
         then:
           return:
             encrypted:
@@ -189,14 +206,13 @@ commands:
       # Test decryption with wrong key
       - description: Decrypt with wrong key fails
         given:
-          db: {}
+          db: *emptyDb
           params:
             data: Secret message
             # All F's - obviously wrong key
             key: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
-          identity: test-user
-          env:
-            CRYPTO_MODE: real
+          identity: *testUser
+          env: *cryptoReal
         then:
           return:
             encrypted:
@@ -225,14 +241,12 @@ commands:
       required:
         - blake2b
       properties:
-        blake2b:
-          type: string
-          pattern: ^[a-f0-9]{128}$  # 64 bytes = 128 hex chars
+        blake2b: *stringPattern128Hex  # 64 bytes = 128 hex chars
     tests:
       # Standard hash test
       - description: Hash data with blake2b
         given:
-          db: {}
+          db: *emptyDb
           params:
             data: test data
         then:
@@ -243,7 +257,7 @@ commands:
       # Edge case: empty string
       - description: Hash empty string with blake2b
         given:
-          db: {}
+          db: *emptyDb
           params:
             data: ''
         then:
@@ -285,12 +299,11 @@ commands:
       # Dummy mode sealed box
       - description: Seal and unseal data successfully (dummy mode)
         given:
-          db: {}
+          db: *emptyDb
           params:
             data: Anonymous message
-          identity: test-user
-          env:
-            CRYPTO_MODE: dummy
+          identity: *testUser
+          env: *cryptoDummy
         then:
           return:
             # Dummy sealed format includes plaintext and recipient
@@ -302,12 +315,11 @@ commands:
       # Real crypto sealed box
       - description: Seal and unseal data successfully (real crypto)
         given:
-          db: {}
+          db: *emptyDb
           params:
             data: Anonymous message
-          identity: test-user
-          env:
-            CRYPTO_MODE: real
+          identity: *testUser
+          env: *cryptoReal
         then:
           return:
             sealed: '*'     # Wildcard - sealed data is non-deterministic
@@ -339,9 +351,7 @@ commands:
         - salt
         - algorithm
       properties:
-        derived_key:
-          type: string
-          pattern: ^[a-f0-9]{64}$  # 32 bytes = 64 hex chars
+        derived_key: *stringPattern64Hex  # 32 bytes = 64 hex chars
         salt:
           type: string
           pattern: ^[a-f0-9]+$     # Variable length salt
@@ -351,12 +361,11 @@ commands:
       # Dummy KDF with fixed salt
       - description: Derive key from password (dummy mode)
         given:
-          db: {}
+          db: *emptyDb
           params:
             password: my-secret-password
             salt: 64756d6d795f73616c74  # "dummy_salt" in hex
-          env:
-            CRYPTO_MODE: dummy
+          env: *cryptoDummy
         then:
           return:
             # Deterministic dummy key derivation
@@ -367,14 +376,13 @@ commands:
       # Real Argon2id with fixed salt
       - description: Derive key from password with fixed salt (real crypto)
         given:
-          db: {}
+          db: *emptyDb
           params:
             password: my-secret-password
             # 32-byte salt (64 hex chars)
             salt: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-          identity: test-user
-          env:
-            CRYPTO_MODE: real
+          identity: *testUser
+          env: *cryptoReal
         then:
           return:
             # Argon2id derived key (deterministic with fixed salt)
@@ -385,12 +393,11 @@ commands:
       # Real Argon2id with random salt
       - description: Derive key from password with random salt (real crypto)
         given:
-          db: {}
+          db: *emptyDb
           params:
             password: another-password
-          identity: test-user
-          env:
-            CRYPTO_MODE: real
+          identity: *testUser
+          env: *cryptoReal
         then:
           return:
             derived_key: '*'  # Wildcard - different each time

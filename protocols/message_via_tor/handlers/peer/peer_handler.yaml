@@ -10,6 +10,12 @@
 # - Resolves "unknown peer" status for messages
 # ===========================================================================================
 
+# Common anchors for reused data
+anchors:
+  # Common empty states
+  emptyPeers: &emptyPeers []
+  emptyState: &emptyState {}
+
 type: peer
 
 # ===========================================================================================
@@ -59,7 +65,7 @@ projector:
     # -------------------------------------------------------------------------------------
     - given:
         db:
-          state: {}
+          state: *emptyState
         envelope:
           data:
             type: peer
@@ -67,7 +73,7 @@ projector:
           metadata: {}
       then:
         db:
-          state: {}  # No peer added
+          state: *emptyState  # No peer added
           
     # -------------------------------------------------------------------------------------
     # Test: Resolve Unknown Peer Messages
@@ -88,7 +94,7 @@ projector:
                 timestamp: 2000
                 unknown_peer: true
                 received_by: test_identity
-            peers: []
+            peers: *emptyPeers
         envelope:
           data:
             type: peer
@@ -138,7 +144,7 @@ projector:
                 timestamp: 2000
                 unknown_peer: true
                 received_by: identity2
-            peers: []
+            peers: *emptyPeers
         envelope:
           data:
             type: peer

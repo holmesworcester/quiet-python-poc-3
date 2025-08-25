@@ -10,6 +10,12 @@
 # - Handles invite link generation and joining
 # ===========================================================================================
 
+# Common anchors for reused data
+anchors:
+  # Common empty states
+  emptyState: &emptyState {}
+  emptyDb: &emptyDb {}
+
 type: identity
 
 # ===========================================================================================
@@ -28,7 +34,7 @@ projector:
     # -------------------------------------------------------------------------------------
     - given:
         db:
-          state: {}
+          state: *emptyState
         envelope:
           data:
             type: identity
@@ -61,7 +67,7 @@ commands:
     func: create.execute
     tests:
       - given:
-          db: {}
+          db: *emptyDb
           params:
             name: Bob  # Optional display name
         then:
@@ -147,7 +153,7 @@ commands:
       # Test: Basic Join Flow
       # -------------------------------------------------------------------------------------
       - given:
-          db: {}
+          db: *emptyDb
           params:
             # Base64-encoded invite data: {"name":"Alice","peer":"pub123"}
             inviteLink: "message-via-tor://invite/eyJuYW1lIjoiQWxpY2UiLCJwZWVyIjoicHViMTIzIn0="
@@ -184,7 +190,7 @@ commands:
       # -------------------------------------------------------------------------------------
       - description: Join creates identity in state after projecting events
         given:
-          db: {}
+          db: *emptyDb
           params:
             # Base64-encoded invite data: {"name":"Bob","peer":"pub456"}
             inviteLink: "message-via-tor://invite/eyJuYW1lIjoiQm9iIiwicGVlciI6InB1YjQ1NiJ9"
