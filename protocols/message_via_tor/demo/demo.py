@@ -413,12 +413,12 @@ class MessageViaTorDemo(App):
                 pubkey_to_name = {}
                 for id_info in identities:
                     pubkey_to_name[id_info['pubkey']] = id_info['name']
-                
-                    for msg in messages:
+
+                for msg in messages:
                     sender_pubkey = msg.get('sender', 'Unknown')
                     sender_name = pubkey_to_name.get(sender_pubkey, sender_pubkey[:8] + '...')
                     text = msg.get('text', '')
-                    
+
                     # Show if it's our own message
                     if sender_pubkey == identity['pubkey']:
                         messages_log.write(f"[bold cyan]{sender_name} (You):[/bold cyan] {text}")
@@ -1009,14 +1009,85 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description='Message via Tor Demo')
     parser.add_argument('--no-reset', action='store_true', 
-                      help='Do not reset database on startup (preserve state)')
+                        help='Do not reset database on startup (preserve state)')
     parser.add_argument('--db-path', default='demo.db',
-                      help='Path to database file (default: demo.db)')
+                        help='Path to database file (default: demo.db)')
+    parser.add_argument('--cli', help='Execute single CLI command and exit')
+    parser.add_argument('--cli-file', help='Execute CLI commands from file and exit')
+    parser.add_argument('--cli-interactive', action='store_true', help='Run the synchronous CLI interactively')
     args = parser.parse_args()
-    
-    # Configure the app based on CLI arguments
+
+    # If CLI mode requested, run the synchronous DemoCLI instead of the TUI
+    if args.cli or args.cli_file or args.cli_interactive:
+        # Configure DB path and reset behavior for demo CLI
+        MessageViaTorDemo.RESET_DB = not args.no_reset
+        os.environ['API_DB_PATH'] = args.db_path
+
+        # Import the synchronous DemoCLI helper
+        try:
+            import demo_cli
+        except Exception:
+            from importlib import import_module
+            demo_cli = import_module('demo_cli')
+
+        cli = demo_cli.DemoCLI()
+
+        def run_one(command_str):
+            # Reuse the same dispatch logic as DemoCLI.run()
+            if not command_str:
+                return
+            command = command_str.strip()
+            if command.startswith('/'):
+                parts = command.split(maxsplit=1)
+                cmd = parts[0].lower()
+                args_part = parts[1] if len(parts) > 1 else ""
+                if cmd == '/create':
+                    cli.handle_create(args_part)
+                elif cmd == '/invite':
+                    cli.handle_invite()
+                elif cmd == '/list':
+                    cli.handle_list()
+                elif cmd == '/debug':
+                    cli.handle_debug()
+                elif cmd == '/select':
+                    cli.handle_select(args_part)
+                elif cmd == '/refresh':
+                    cli.refresh_state()
+                elif cmd == '/tick':
+                    cli.handle_tick()
+                elif cmd == '/join':
+                    cli.handle_join(args_part)
+                elif cmd == '/help':
+                    print("Run '/help' in interactive CLI for available commands.")
+                else:
+                    print(f"Unknown command: {cmd}")
+            else:
+                print("Regular messages not implemented in CLI. Use /help for commands.")
+
+        if args.cli:
+            run_one(args.cli)
+        elif args.cli_file:
+            with open(args.cli_file, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    print(f"> {line}")
+                    run_one(line)
+        else:
+            # Interactive synchronous CLI
+            cli.run()
+
+        # cleanup DB file if created by DemoCLI
+        try:
+            if os.path.exists(cli.db_path):
+                os.remove(cli.db_path)
+        except Exception:
+            pass
+        sys.exit(0)
+
+    # Otherwise run the TUI app
     MessageViaTorDemo.RESET_DB = not args.no_reset
-    
     app = MessageViaTorDemo()
     app.db_path = args.db_path  # Override db path if specified
     app.run()

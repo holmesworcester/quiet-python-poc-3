@@ -1,0 +1,95 @@
+{
+  "type": "network",
+  "projector": {
+    "description": "Projects network creation events",
+    "func": "projector.project",
+    "tests": [
+      {
+        "given": {
+          "db": {"state": {}},
+          "envelope": {
+            "data": {
+              "type": "network",
+              "id": "network_id_123",
+              "name": "Test Network",
+              "creator_pubkey": "test_pubkey_123",
+              "signature": "dummy_signature_123"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "network": {
+                "id": "network_id_123",
+                "name": "Test Network",
+                "creator_pubkey": "test_pubkey_123"
+              }
+            },
+            "eventStore": [
+              {
+                "data": {
+                  "type": "network",
+                  "id": "network_id_123",
+                  "name": "Test Network",
+                  "creator_pubkey": "test_pubkey_123",
+                  "signature": "dummy_signature_123"
+                },
+                "metadata": {}
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "commands": {
+    "create": {
+      "description": "Creates a new network",
+      "func": "create.execute",
+      "tests": [
+        {
+          "given": {
+            "db": {
+              "state": {
+                "identities": [
+                  {"pubkey": "creator_pub", "privkey": "creator_priv", "name": "Creator"}
+                ]
+              }
+            },
+            "params": {
+              "name": "My Network",
+              "identityId": "creator_pub"
+            }
+          },
+          "then": {
+            "return": {
+              "api_response": {
+                "networkId": "*",
+                "name": "My Network"
+              },
+              "newEvents": [
+                {
+                  "type": "network",
+                  "id": "*",
+                  "name": "My Network",
+                  "creator_pubkey": "creator_pub",
+                  "signature": "*"
+                },
+                {
+                  "type": "user",
+                  "id": "*",
+                  "network_id": "*",
+                  "pubkey": "creator_pub",
+                  "name": "Creator",
+                  "signature": "*"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

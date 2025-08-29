@@ -1,0 +1,167 @@
+{
+  "type": "user",
+  "projector": {
+    "description": "Projects user events",
+    "func": "projector.project",
+    "tests": [
+      {
+        "description": "Network creator user is valid",
+        "given": {
+          "db": {
+            "state": {
+              "network": {"id": "net_123", "creator_pubkey": "creator_pub"}
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "user",
+              "id": "user_123",
+              "network_id": "net_123",
+              "pubkey": "creator_pub",
+              "name": "Creator",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "network": {"id": "net_123", "creator_pubkey": "creator_pub"},
+              "users": [
+                {
+                  "id": "user_123",
+                  "network_id": "net_123",
+                  "pubkey": "creator_pub",
+                  "name": "Creator"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "description": "User with valid invite is accepted",
+        "given": {
+          "db": {
+            "state": {
+              "invites": [
+                {"id": "invite_123", "invite_pubkey": "invite_pub_123"}
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "user",
+              "id": "user_456",
+              "network_id": "net_123",
+              "pubkey": "new_user_pub",
+              "name": "New User",
+              "invite_id": "invite_123",
+              "invite_signature": "dummy_invite_sig",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "invites": [
+                {"id": "invite_123", "invite_pubkey": "invite_pub_123"}
+              ],
+              "users": [
+                {
+                  "id": "user_456",
+                  "network_id": "net_123",
+                  "pubkey": "new_user_pub",
+                  "name": "New User",
+                  "invite_id": "invite_123"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "description": "User without valid invite is blocked",
+        "given": {
+          "db": {
+            "state": {}
+          },
+          "envelope": {
+            "data": {
+              "type": "user",
+              "id": "user_789",
+              "network_id": "net_123",
+              "pubkey": "invalid_user_pub",
+              "name": "Invalid User",
+              "invite_id": "nonexistent_invite",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "blocked": [
+                {
+                  "event_id": "user_789",
+                  "blocked_by": "nonexistent_invite",
+                  "reason": "Invite nonexistent_invite not found"
+                }
+              ]
+            }
+          }
+        }
+      }
+    ]
+  },
+  "commands": {
+    "join": {
+      "description": "Join network using invite link",
+      "func": "join.execute",
+      "tests": [
+        {
+          "given": {
+            "db": {
+              "state": {
+                "identities": [
+                  {"pubkey": "joiner_pub", "privkey": "joiner_priv", "name": "Joiner"}
+                ],
+                "invites": [
+                  {"id": "invite_123", "invite_pubkey": "invite_pub_1e1541452d6b4f09", "network_id": "net_123"}
+                ]
+              }
+            },
+            "params": {
+              "identityId": "joiner_pub",
+              "inviteLink": "signed-groups://invite/eyJpbnZpdGVfc2VjcmV0IjoiaW52aXRlX3NlY3JldF8xMjMiLCJuZXR3b3JrX2lkIjoibmV0XzEyMyIsIm5ldHdvcmtfbmFtZSI6IlRlc3QgTmV0d29yayJ9"
+            }
+          },
+          "then": {
+            "return": {
+              "api_response": {
+                "userId": "*",
+                "networkId": "net_123"
+              },
+              "newEvents": [
+                {
+                  "type": "user",
+                  "id": "*",
+                  "network_id": "net_123",
+                  "pubkey": "joiner_pub",
+                  "name": "Joiner",
+                  "invite_id": "*",
+                  "invite_signature": "*",
+                  "signature": "*"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

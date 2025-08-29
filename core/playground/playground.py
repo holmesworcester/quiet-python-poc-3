@@ -222,7 +222,8 @@ class APIClient:
     async def request(self, method: str, path: str, data: Optional[str] = None) -> Any:
         """Make an API request using api.py CLI"""
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        cmd = [sys.executable, "-m", "core.api", self.protocol_path, method, path]
+        protocol_arg = os.path.basename(self.protocol_path) if ('/' in self.protocol_path or '\\' in self.protocol_path) else self.protocol_path
+        cmd = [sys.executable, "-m", "core.api", protocol_arg, method, path]
         
         # Parse data if provided
         if data:
@@ -378,11 +379,14 @@ class CLIExecutor:
         self.config = config
         self.variables = {}
         self.aliases = {}
-        
-        # Load default aliases from first window config if available
+
+        # Merge aliases from all windows so CLI mode has access to them
         windows = config.get("windows", [])
-        if windows:
-            self.aliases = windows[0].get("aliases", {})
+        for w in windows:
+            for k, v in (w.get("aliases", {}) or {}).items():
+                # Do not allow alias to override an existing alias already set earlier
+                if k not in self.aliases:
+                    self.aliases[k] = v
             
     async def execute_command(self, command: str) -> str:
         """Execute a single command and return result"""
@@ -464,7 +468,8 @@ class CLIExecutor:
         
         # Build command - run from project root
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        cmd = [sys.executable, "-m", "core.api", self.protocol_path, method, path]
+        protocol_arg = os.path.basename(self.protocol_path) if ('/' in self.protocol_path or '\\' in self.protocol_path) else self.protocol_path
+        cmd = [sys.executable, "-m", "core.api", protocol_arg, method, path]
         
         # Parse and add data if provided
         if data:
@@ -499,38 +504,207 @@ class CLIExecutor:
                 result = await self.execute_command(command)
                 print(result)
                 print()
+
+
+class SyncCLIExecutor:
+    """Synchronous version of CLIExecutor for environments where asyncio is not available."""
+    def __init__(self, protocol_path: str, config: Dict[str, Any]):
+        self.protocol_path = protocol_path
+        self.config = config
+        self.variables = {}
+        self.aliases = {}
+        windows = config.get("windows", [])
+        for w in windows:
+            for k, v in (w.get("aliases", {}) or {}).items():
+                if k not in self.aliases:
+                    self.aliases[k] = v
+
+    def execute_command(self, command: str) -> str:
+        for var, value in self.variables.items():
+            command = command.replace(f"{{{var}}}", value)
+
+        if command.startswith("/"):
+            return self.handle_slash_command(command)
+
+        parts = command.split(None, 1)
+        if parts and parts[0] in self.aliases:
+            alias_cmd = self.aliases[parts[0]]
+            if len(parts) > 1:
+                args = parts[1].split()
+                for i, arg in enumerate(args):
+                    alias_cmd = alias_cmd.replace(f"{{{i+1}}}", arg)
+                alias_cmd = alias_cmd.replace("{*}", parts[1])
+            return self.execute_command(alias_cmd)
+
+        return f"Unknown command: {command}"
+
+    def handle_slash_command(self, command: str) -> str:
+        parts = command[1:].split(None, 1)
+        if not parts:
+            return "Empty command"
+
+        cmd = parts[0].lower()
+        args = parts[1] if len(parts) > 1 else ""
+
+        if cmd == "define":
+            if args:
+                var_parts = args.split(None, 1)
+                if len(var_parts) == 2:
+                    self.variables[var_parts[0]] = var_parts[1]
+                    return f"Variable defined: {var_parts[0]} = {var_parts[1]}"
+            else:
+                return "\n".join(f"{k}: {v}" for k, v in self.variables.items())
+
+        if cmd == "alias":
+            if args:
+                alias_parts = args.split(None, 1)
+                if len(alias_parts) == 2:
+                    self.aliases[alias_parts[0]] = alias_parts[1]
+                    return f"Alias created: {alias_parts[0]} -> {alias_parts[1]}"
+            else:
+                return "\n".join(f"{k}: {v}" for k, v in self.aliases.items())
+
+        if cmd == "api":
+            return self.handle_api_command(args)
+
+        if cmd == "echo":
+            return args
+
+        if cmd in self.aliases:
+            alias_cmd = self.aliases[cmd]
+            if args:
+                arg_list = args.split()
+                for i, arg in enumerate(arg_list):
+                    alias_cmd = alias_cmd.replace(f"{{{i+1}}}", arg)
+                alias_cmd = alias_cmd.replace("{*}", args)
+            return self.execute_command(alias_cmd)
+
+        return f"Unknown command: /{cmd}"
+
+    def handle_api_command(self, args: str) -> str:
+        parts = args.split(None, 2)
+        if len(parts) < 2:
+            return "Usage: /api <METHOD> <path> [data]"
+
+        method = parts[0].upper()
+        path = parts[1]
+        data = parts[2] if len(parts) > 2 else None
+
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        protocol_arg = os.path.basename(self.protocol_path) if ('/' in self.protocol_path or '\\' in self.protocol_path) else self.protocol_path
+        cmd = [sys.executable, "-m", "core.api", protocol_arg, method, path]
+
+        if data:
+            json_data = None
+            try:
+                json_data = json.loads(data)
+            except json.JSONDecodeError:
+                json_data = {}
+                for pair in data.split():
+                    if "=" in pair:
+                        key, value = pair.split("=", 1)
+                        json_data[key] = value
+            if json_data:
+                cmd.extend(["--data", json.dumps(json_data)])
+
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=project_root)
+        if result.returncode != 0:
+            return f"API Error: {result.stderr}"
+        return result.stdout
+
+    def run_commands(self, commands: List[str]):
+        for command in commands:
+            command = command.strip()
+            if command and not command.startswith('#'):
+                print(f"> {command}")
+                result = self.execute_command(command)
+                print(result)
+                print()
                 
 def run_cli_mode(args, config):
-    """Run playground in CLI mode"""
+    """Run playground in CLI mode
+
+    Attempt to run with the async CLIExecutor first. If the environment
+    prevents asyncio from creating an event loop (PermissionError/OSError),
+    fall back to a synchronous executor (SyncCLIExecutor) which executes
+    /api commands via subprocesses. This keeps the protocol-agnostic logic
+    entirely in YAML and the executor implementations.
+    """
+    # Primary (async) executor
     executor = CLIExecutor(args.protocol, config)
-    
-    if args.cli:
-        # Single command mode
-        asyncio.run(executor.run_commands([args.cli]))
-        
-    elif args.cli_file:
-        # File mode
-        with open(args.cli_file, 'r') as f:
-            commands = f.readlines()
-        asyncio.run(executor.run_commands(commands))
-        
-    elif args.cli_interactive:
-        # Interactive mode
-        async def interactive():
+
+    # Helper to run commands synchronously via SyncCLIExecutor
+    def run_sync_commands():
+        sync_executor = SyncCLIExecutor(args.protocol, config)
+        if args.cli:
+            sync_executor.run_commands([args.cli])
+            return True
+        if args.cli_file:
+            with open(args.cli_file, 'r') as f:
+                commands = f.readlines()
+            sync_executor.run_commands(commands)
+            return True
+        if args.cli_interactive:
             print("Playground CLI (type 'exit' to quit)")
             while True:
                 try:
                     command = input("> ")
                     if command.lower() in ['exit', 'quit']:
                         break
-                    result = await executor.execute_command(command)
+                    result = sync_executor.execute_command(command)
                     print(result)
                 except KeyboardInterrupt:
                     break
                 except Exception as e:
                     print(f"Error: {e}")
-                    
-        asyncio.run(interactive())
+            return True
+        return False
+
+    # If the environment disallows socketpair (asyncio internals), skip async entirely
+    try:
+        import socket
+        s1, s2 = socket.socketpair()
+        s1.close(); s2.close()
+        can_use_async = True
+    except Exception:
+        can_use_async = False
+
+    if can_use_async:
+        # Try async executor
+        try:
+            if args.cli:
+                asyncio.run(executor.run_commands([args.cli]))
+                return
+            if args.cli_file:
+                with open(args.cli_file, 'r') as f:
+                    commands = f.readlines()
+                asyncio.run(executor.run_commands(commands))
+                return
+            if args.cli_interactive:
+                async def interactive():
+                    print("Playground CLI (type 'exit' to quit)")
+                    while True:
+                        try:
+                            command = input("> ")
+                            if command.lower() in ['exit', 'quit']:
+                                break
+                            result = await executor.execute_command(command)
+                            print(result)
+                        except KeyboardInterrupt:
+                            break
+                        except Exception as e:
+                            print(f"Error: {e}")
+
+                asyncio.run(interactive())
+                return
+        except (PermissionError, OSError):
+            # Fall through to sync fallback
+            pass
+
+    # Fallback to synchronous execution
+    ran = run_sync_commands()
+    if ran:
+        return
 
 
 def main():

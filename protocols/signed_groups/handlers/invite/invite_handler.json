@@ -1,0 +1,105 @@
+{
+  "type": "invite",
+  "projector": {
+    "description": "Projects invite events",
+    "func": "projector.project",
+    "tests": [
+      {
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "inviter_pub", "network_id": "net_123"}
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "invite",
+              "id": "invite_id_123",
+              "invite_pubkey": "invite_pub_123",
+              "network_id": "net_123",
+              "created_by": "user_123",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "inviter_pub", "network_id": "net_123"}
+              ],
+              "invites": [
+                {
+                  "id": "invite_id_123",
+                  "invite_pubkey": "invite_pub_123",
+                  "network_id": "net_123",
+                  "created_by": "user_123"
+                }
+              ]
+            },
+            "eventStore": [
+              {
+                "data": {
+                  "type": "invite",
+                  "id": "invite_id_123",
+                  "invite_pubkey": "invite_pub_123",
+                  "network_id": "net_123",
+                  "created_by": "user_123",
+                  "signature": "dummy_sig"
+                },
+                "metadata": {}
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "commands": {
+    "create": {
+      "description": "Creates an invite for the network",
+      "func": "create.execute",
+      "tests": [
+        {
+          "given": {
+            "db": {
+              "state": {
+                "network": {"id": "net_123", "name": "Test Network"},
+                "identities": [
+                  {"pubkey": "inviter_pub", "privkey": "inviter_priv", "name": "Alice"}
+                ],
+                "users": [
+                  {"id": "user_123", "pubkey": "inviter_pub", "network_id": "net_123"}
+                ]
+              }
+            },
+            "params": {
+              "identityId": "inviter_pub"
+            }
+          },
+          "then": {
+            "return": {
+              "api_response": {
+                "inviteLink": "*",
+                "inviteId": "*"
+              },
+              "newEvents": [
+                {
+                  "type": "invite",
+                  "id": "*",
+                  "invite_pubkey": "*",
+                  "network_id": "net_123",
+                  "created_by": "user_123",
+                  "signature": "*"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}
