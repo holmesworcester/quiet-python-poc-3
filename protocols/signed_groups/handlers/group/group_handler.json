@@ -1,0 +1,299 @@
+{
+  "type": "group",
+  "projector": {
+    "description": "Projects group events",
+    "func": "projector.project",
+    "tests": [
+      {
+        "description": "Group created by valid user",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"}
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "group",
+              "id": "group_123",
+              "name": "Developers",
+              "user_id": "user_123",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {
+                  "id": "group_123",
+                  "name": "Developers",
+                  "created_by": "user_123"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "description": "Group blocked when creator doesn't exist",
+        "given": {
+          "db": {
+            "state": {}
+          },
+          "envelope": {
+            "data": {
+              "type": "group",
+              "id": "group_456",
+              "name": "Invalid Group",
+              "user_id": "unknown_user",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "blocked_by_id": {
+                "unknown_user": [
+                  {
+                    "event_id": "group_456",
+                    "reason": "Creator user unknown_user not found"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "description": "Group blocked when user_id doesn't match signer",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"},
+                {"id": "user_456", "pubkey": "other_pub", "network_id": "net_123"}
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "group",
+              "id": "group_789",
+              "name": "Mismatched Group",
+              "user_id": "user_123",
+              "signature": "dummy_sig_signed_by_user_456"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"},
+                {"id": "user_456", "pubkey": "other_pub", "network_id": "net_123"}
+              ],
+              "blocked_by_id": {
+                "signature_mismatch": [
+                  {
+                    "event_id": "group_789",
+                    "reason": "Signature does not match claimed user user_123"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "description": "Idempotency - duplicate group doesn't create duplicate state",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {
+                  "id": "group_123",
+                  "name": "Developers",
+                  "created_by": "user_123"
+                }
+              ]
+            },
+            "eventStore": [
+              {
+                "data": {
+                  "type": "group",
+                  "id": "group_123",
+                  "name": "Developers",
+                  "user_id": "user_123",
+                  "signature": "dummy_sig"
+                },
+                "metadata": {}
+              }
+            ]
+          },
+          "envelope": {
+            "data": {
+              "type": "group",
+              "id": "group_123",
+              "name": "Developers",
+              "user_id": "user_123",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {
+                  "id": "group_123",
+                  "name": "Developers",
+                  "created_by": "user_123"
+                }
+              ]
+            },
+            "eventStore": [
+              {
+                "data": {
+                  "type": "group",
+                  "id": "group_123",
+                  "name": "Developers",
+                  "user_id": "user_123",
+                  "signature": "dummy_sig"
+                },
+                "metadata": {}
+              }
+            ]
+          }
+        }
+      },
+      {
+        "description": "Auto-unblocks add events waiting for this group",
+        "given": {
+          "db": {
+            "eventStore": [
+              {
+                "data": {
+                  "type": "add",
+                  "id": "add_123",
+                  "group_id": "group_456",
+                  "user_id": "user_789",
+                  "added_by": "user_123",
+                  "signature": "dummy_sig"
+                },
+                "metadata": {}
+              }
+            ],
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"},
+                {"id": "user_789", "pubkey": "member_pub", "network_id": "net_123"}
+              ],
+              "blocked_by_id": {
+                "group_456": [
+                  {"event_id": "add_123", "reason": "Group group_456 not found"}
+                ]
+              }
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "group",
+              "id": "group_456",
+              "name": "New Group",
+              "user_id": "user_123",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "ticks": 2,
+        "then": {
+          "db": {
+            "state": {
+              "groups": [
+                {"id": "group_456"}
+              ],
+              "adds": [
+                {"id": "add_123"}
+              ],
+              "ready_to_unblock": {}
+            }
+          }
+        }
+      },
+      {
+        "description": "Auto-unblocks channel events waiting for this group",
+        "given": {
+          "db": {
+            "eventStore": [
+              {
+                "data": {
+                  "type": "channel",
+                  "id": "channel_789",
+                  "network_id": "net_123",
+                  "name": "Dev Chat",
+                  "group_id": "group_new",
+                  "created_by": "user_123",
+                  "signature": "dummy_sig"
+                },
+                "metadata": {}
+              }
+            ],
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"}
+              ],
+              "blocked_by_id": {
+                "group_new": [
+                  {"event_id": "channel_789", "reason": "Group group_new not found"}
+                ]
+              }
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "group",
+              "id": "group_new",
+              "name": "New Group",
+              "user_id": "user_123",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "ticks": 2,
+        "then": {
+          "db": {
+            "state": {
+              "groups": [
+                {"id": "group_new"}
+              ],
+              "channels": [
+                {"id": "channel_789"}
+              ],
+              "ready_to_unblock": {}
+            }
+          }
+        }
+      }
+    ]
+  }
+}

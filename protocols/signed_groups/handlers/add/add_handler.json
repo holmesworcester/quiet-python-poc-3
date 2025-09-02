@@ -1,0 +1,321 @@
+{
+  "type": "add",
+  "projector": {
+    "description": "Projects add events - adds users to groups",
+    "func": "projector.project",
+    "tests": [
+      {
+        "description": "Valid add with existing group and users",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "adder_pub", "network_id": "net_123"},
+                {"id": "user_456", "pubkey": "member_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {"id": "group_123", "name": "Developers", "created_by": "user_123"}
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "add",
+              "id": "add_123",
+              "group_id": "group_123",
+              "user_id": "user_456",
+              "added_by": "user_123",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "adder_pub", "network_id": "net_123"},
+                {"id": "user_456", "pubkey": "member_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {"id": "group_123", "name": "Developers", "created_by": "user_123"}
+              ],
+              "adds": [
+                {
+                  "id": "add_123",
+                  "group_id": "group_123",
+                  "user_id": "user_456",
+                  "added_by": "user_123"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "description": "Add blocked when group doesn't exist",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "adder_pub", "network_id": "net_123"},
+                {"id": "user_456", "pubkey": "member_pub", "network_id": "net_123"}
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "add",
+              "id": "add_456",
+              "group_id": "nonexistent_group",
+              "user_id": "user_456",
+              "added_by": "user_123",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "adder_pub", "network_id": "net_123"},
+                {"id": "user_456", "pubkey": "member_pub", "network_id": "net_123"}
+              ],
+              "blocked_by_id": {
+                "nonexistent_group": [
+                  {
+                    "event_id": "add_456",
+                    "reason": "Group nonexistent_group not found"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "description": "Add blocked when user doesn't exist",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "adder_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {"id": "group_123", "name": "Developers", "created_by": "user_123"}
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "add",
+              "id": "add_789",
+              "group_id": "group_123",
+              "user_id": "nonexistent_user",
+              "added_by": "user_123",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "adder_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {"id": "group_123", "name": "Developers", "created_by": "user_123"}
+              ],
+              "blocked_by_id": {
+                "nonexistent_user": [
+                  {
+                    "event_id": "add_789",
+                    "reason": "User nonexistent_user not found"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "description": "Add blocked when adder doesn't exist",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_456", "pubkey": "member_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {"id": "group_123", "name": "Developers", "created_by": "user_123"}
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "add",
+              "id": "add_999",
+              "group_id": "group_123",
+              "user_id": "user_456",
+              "added_by": "nonexistent_adder",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_456", "pubkey": "member_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {"id": "group_123", "name": "Developers", "created_by": "user_123"}
+              ],
+              "blocked_by_id": {
+                "nonexistent_adder": [
+                  {
+                    "event_id": "add_999",
+                    "reason": "Adder user nonexistent_adder not found"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "description": "Add blocked when signature is from non-user",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "user_pub", "network_id": "net_123"},
+                {"id": "user_456", "pubkey": "member_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {"id": "group_123", "name": "Developers", "created_by": "user_123"}
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "add",
+              "id": "add_fake",
+              "group_id": "group_123",
+              "user_id": "user_456",
+              "added_by": "user_123",
+              "signature": "dummy_sig_from_unknown"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "user_pub", "network_id": "net_123"},
+                {"id": "user_456", "pubkey": "member_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {"id": "group_123", "name": "Developers", "created_by": "user_123"}
+              ],
+              "blocked_by_id": {
+                "invalid_signature": [
+                  {
+                    "event_id": "add_fake",
+                    "reason": "Event signed by unknown user"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "description": "Idempotency - duplicate add doesn't create duplicate state",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "adder_pub", "network_id": "net_123"},
+                {"id": "user_456", "pubkey": "member_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {"id": "group_123", "name": "Developers", "created_by": "user_123"}
+              ],
+              "adds": [
+                {
+                  "id": "add_123",
+                  "group_id": "group_123",
+                  "user_id": "user_456",
+                  "added_by": "user_123"
+                }
+              ]
+            },
+            "eventStore": [
+              {
+                "data": {
+                  "type": "add",
+                  "id": "add_123",
+                  "group_id": "group_123",
+                  "user_id": "user_456",
+                  "added_by": "user_123",
+                  "signature": "dummy_sig"
+                },
+                "metadata": {}
+              }
+            ]
+          },
+          "envelope": {
+            "data": {
+              "type": "add",
+              "id": "add_123",
+              "group_id": "group_123",
+              "user_id": "user_456",
+              "added_by": "user_123",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "adder_pub", "network_id": "net_123"},
+                {"id": "user_456", "pubkey": "member_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {"id": "group_123", "name": "Developers", "created_by": "user_123"}
+              ],
+              "adds": [
+                {
+                  "id": "add_123",
+                  "group_id": "group_123",
+                  "user_id": "user_456",
+                  "added_by": "user_123"
+                }
+              ]
+            },
+            "eventStore": [
+              {
+                "data": {
+                  "type": "add",
+                  "id": "add_123",
+                  "group_id": "group_123",
+                  "user_id": "user_456",
+                  "added_by": "user_123",
+                  "signature": "dummy_sig"
+                },
+                "metadata": {}
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

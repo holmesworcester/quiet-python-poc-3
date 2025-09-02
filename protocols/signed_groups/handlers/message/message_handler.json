@@ -1,0 +1,542 @@
+{
+  "type": "message",
+  "projector": {
+    "description": "Projects message events - used for testing concurrency",
+    "func": "projector.project",
+    "tests": [
+      {
+        "description": "Message blocked when missing peer_id",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "author_pub", "network_id": "net_123"}
+              ],
+              "channels": [
+                {"id": "channel_123", "network_id": "net_123"}
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "message",
+              "id": "msg_no_peer",
+              "channel_id": "channel_123",
+              "author_id": "user_123",
+              "user_id": "user_123",
+              "content": "Hello",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "author_pub", "network_id": "net_123"}
+              ],
+              "channels": [
+                {"id": "channel_123", "network_id": "net_123"}
+              ],
+              "blocked_by_id": {
+                "missing_fields": [
+                  {
+                    "event_id": "msg_no_peer",
+                    "reason": "Message missing peer_id"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "description": "Message blocked when peer_id doesn't match user_id",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "author_pub", "network_id": "net_123"}
+              ],
+              "channels": [
+                {"id": "channel_123", "network_id": "net_123"}
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "message",
+              "id": "msg_mismatch",
+              "channel_id": "channel_123",
+              "author_id": "user_123",
+              "peer_id": "peer_456",
+              "user_id": "user_123",
+              "content": "Hello",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "author_pub", "network_id": "net_123"}
+              ],
+              "channels": [
+                {"id": "channel_123", "network_id": "net_123"}
+              ],
+              "blocked_by_id": {
+                "peer_user_mismatch": [
+                  {
+                    "event_id": "msg_mismatch",
+                    "reason": "Message peer_id must match user_id"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "description": "Message with valid author, peer_id and user_id is accepted",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "author_pub", "network_id": "net_123"}
+              ],
+              "channels": [
+                {"id": "channel_123", "network_id": "net_123"}
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "message",
+              "id": "msg_123",
+              "channel_id": "channel_123",
+              "author_id": "user_123",
+              "peer_id": "user_123",
+              "user_id": "user_123",
+              "content": "Hello",
+              "text": "Hello",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "author_pub", "network_id": "net_123"}
+              ],
+              "channels": [
+                {"id": "channel_123", "network_id": "net_123"}
+              ],
+              "messages": [
+                {
+                  "id": "msg_123",
+                  "channel_id": "channel_123",
+                  "author_id": "user_123",
+                  "peer_id": "user_123",
+                  "user_id": "user_123",
+                  "content": "Hello",
+                  "text": "Hello"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "description": "Message from unknown author is blocked",
+        "given": {
+          "db": {
+            "state": {
+              "channels": [
+                {"id": "channel_123", "network_id": "net_123"}
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "message",
+              "id": "msg_456",
+              "channel_id": "channel_123",
+              "author_id": "unknown_user",
+              "peer_id": "unknown_user",
+              "user_id": "unknown_user",
+              "content": "Hello from unknown",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "channels": [
+                {"id": "channel_123", "network_id": "net_123"}
+              ],
+              "blocked_by_id": {
+                "unknown_user": [
+                  {
+                    "event_id": "msg_456",
+                    "reason": "Author unknown_user not found"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "description": "Message blocked when signature is from non-user",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "author_pub", "network_id": "net_123"}
+              ],
+              "channels": [
+                {"id": "channel_123", "network_id": "net_123"}
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "message",
+              "id": "msg_fake",
+              "channel_id": "channel_123",
+              "author_id": "user_123",
+              "peer_id": "user_123",
+              "user_id": "user_123",
+              "content": "Fake message",
+              "signature": "dummy_sig_from_unknown"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "author_pub", "network_id": "net_123"}
+              ],
+              "channels": [
+                {"id": "channel_123", "network_id": "net_123"}
+              ],
+              "blocked_by_id": {
+                "invalid_signature": [
+                  {
+                    "event_id": "msg_fake",
+                    "reason": "Event signed by unknown user"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "description": "Idempotency - duplicate message doesn't create duplicate state",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "author_pub", "network_id": "net_123"}
+              ],
+              "channels": [
+                {"id": "channel_123", "network_id": "net_123"}
+              ],
+              "messages": [
+                {
+                  "id": "msg_123",
+                  "channel_id": "channel_123",
+                  "author_id": "user_123",
+                  "peer_id": "user_123",
+                  "user_id": "user_123",
+                  "content": "Hello"
+                }
+              ]
+            },
+            "eventStore": [
+              {
+                "data": {
+                  "type": "message",
+                  "id": "msg_123",
+                  "channel_id": "channel_123",
+                  "author_id": "user_123",
+                  "peer_id": "user_123",
+                  "user_id": "user_123",
+                  "content": "Hello",
+                  "signature": "dummy_sig"
+                },
+                "metadata": {}
+              }
+            ]
+          },
+          "envelope": {
+            "data": {
+              "type": "message",
+              "id": "msg_123",
+              "channel_id": "channel_123",
+              "author_id": "user_123",
+              "content": "Hello",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "author_pub", "network_id": "net_123"}
+              ],
+              "channels": [
+                {"id": "channel_123", "network_id": "net_123"}
+              ],
+              "messages": [
+                {
+                  "id": "msg_123",
+                  "channel_id": "channel_123",
+                  "author_id": "user_123",
+                  "peer_id": "user_123",
+                  "user_id": "user_123",
+                  "content": "Hello"
+                }
+              ]
+            },
+            "eventStore": [
+              {
+                "data": {
+                  "type": "message",
+                  "id": "msg_123",
+                  "channel_id": "channel_123",
+                  "author_id": "user_123",
+                  "peer_id": "user_123",
+                  "user_id": "user_123",
+                  "content": "Hello",
+                  "signature": "dummy_sig"
+                },
+                "metadata": {}
+              }
+            ]
+          }
+        }
+      },
+      {
+        "description": "Lost dependency - message blocked when author doesn't exist yet",
+        "given": {
+          "db": {
+            "state": {
+              "channels": [
+                {"id": "channel_123", "network_id": "net_123"}
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "message",
+              "id": "msg_789",
+              "channel_id": "channel_123",
+              "author_id": "new_user",
+              "content": "Message from new user",
+              "signature": "valid_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "channels": [
+                {"id": "channel_123", "network_id": "net_123"}
+              ],
+              "blocked_by_id": {
+                "new_user": [
+                  {
+                    "event_id": "msg_789",
+                    "reason": "Author new_user not found"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "description": "Message blocked when author not in channel's group",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "user_pub", "network_id": "net_123"},
+                {"id": "user_456", "pubkey": "other_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {"id": "group_123", "name": "Developers", "created_by": "user_123"}
+              ],
+              "channels": [
+                {"id": "channel_123", "network_id": "net_123", "group_id": "group_123"}
+              ],
+              "adds": []
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "message",
+              "id": "msg_blocked",
+              "channel_id": "channel_123",
+              "author_id": "user_456",
+              "content": "I'm not in this group!",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "user_pub", "network_id": "net_123"},
+                {"id": "user_456", "pubkey": "other_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {"id": "group_123", "name": "Developers", "created_by": "user_123"}
+              ],
+              "channels": [
+                {"id": "channel_123", "network_id": "net_123", "group_id": "group_123"}
+              ],
+              "adds": [],
+              "blocked_by_id": {
+                "group_membership": [
+                  {
+                    "event_id": "msg_blocked",
+                    "reason": "Author user_456 is not a member of group group_123"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "description": "Message allowed when author is group creator",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "user_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {"id": "group_123", "name": "Developers", "created_by": "user_123"}
+              ],
+              "channels": [
+                {"id": "channel_123", "network_id": "net_123", "group_id": "group_123"}
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "message",
+              "id": "msg_from_creator",
+              "channel_id": "channel_123",
+              "author_id": "user_123",
+              "content": "Hello from group creator",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "user_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {"id": "group_123", "name": "Developers", "created_by": "user_123"}
+              ],
+              "channels": [
+                {"id": "channel_123", "network_id": "net_123", "group_id": "group_123"}
+              ],
+              "messages": [
+                {
+                  "id": "msg_from_creator",
+                  "channel_id": "channel_123",
+                  "author_id": "user_123",
+                  "content": "Hello from group creator"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "description": "Message allowed when author was added to group",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "user_pub", "network_id": "net_123"},
+                {"id": "user_456", "pubkey": "other_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {"id": "group_123", "name": "Developers", "created_by": "user_123"}
+              ],
+              "channels": [
+                {"id": "channel_123", "network_id": "net_123", "group_id": "group_123"}
+              ],
+              "adds": [
+                {"id": "add_123", "group_id": "group_123", "user_id": "user_456", "added_by": "user_123"}
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "message",
+              "id": "msg_from_member",
+              "channel_id": "channel_123",
+              "author_id": "user_456",
+              "content": "Hello from added member",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "user_pub", "network_id": "net_123"},
+                {"id": "user_456", "pubkey": "other_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {"id": "group_123", "name": "Developers", "created_by": "user_123"}
+              ],
+              "channels": [
+                {"id": "channel_123", "network_id": "net_123", "group_id": "group_123"}
+              ],
+              "adds": [
+                {"id": "add_123", "group_id": "group_123", "user_id": "user_456", "added_by": "user_123"}
+              ],
+              "messages": [
+                {
+                  "id": "msg_from_member",
+                  "channel_id": "channel_123",
+                  "author_id": "user_456",
+                  "content": "Hello from added member"
+                }
+              ]
+            }
+          }
+        }
+      }
+    ]
+  }
+}

@@ -279,6 +279,27 @@ class TestRunner:
                     elif db['state'].get(key) != result_db['state'].get(key):
                         self.log(f"State changed key '{key}': {db['state'].get(key)} -> {result_db['state'].get(key)}")
             
+            # Run ticks if specified
+            ticks_to_run = test.get('ticks', 0)
+            if ticks_to_run > 0:
+                self.log(f"Running {ticks_to_run} ticks for projector test")
+                
+                # Import tick based on protocol
+                protocol = handler_file.split('/')[1] if '/' in handler_file else 'signed_groups'
+                if protocol == "framework_tests":
+                    from core.tick import tick
+                else:
+                    # For other protocols, tick just runs jobs
+                    from core.tick import run_all_jobs as tick
+                
+                # Run the specified number of ticks
+                base_time = 1000
+                time_increment = 100
+                for i in range(ticks_to_run):
+                    current_time = base_time + (i + 1) * time_increment
+                    self.log(f"Tick {i+1} at time {current_time}")
+                    result_db = tick(result_db, time_now_ms=current_time)
+            
             # Check result
             result = {"db": result_db}
             matches, path, exp_val, act_val = self.subset_match(result, then)

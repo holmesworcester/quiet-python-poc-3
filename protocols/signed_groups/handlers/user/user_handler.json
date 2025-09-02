@@ -5,7 +5,7 @@
     "func": "projector.project",
     "tests": [
       {
-        "description": "Network creator user is valid",
+        "description": "Network creator user is valid without group_id",
         "given": {
           "db": {
             "state": {
@@ -41,19 +41,22 @@
         }
       },
       {
-        "description": "User with valid invite is accepted",
+        "description": "User blocked when missing group_id",
         "given": {
           "db": {
             "state": {
               "invites": [
-                {"id": "invite_123", "invite_pubkey": "invite_pub_123"}
+                {"id": "invite_123", "invite_pubkey": "invite_pub_123", "group_id": "group_123"}
+              ],
+              "groups": [
+                {"id": "group_123", "name": "First Group"}
               ]
             }
           },
           "envelope": {
             "data": {
               "type": "user",
-              "id": "user_456",
+              "id": "user_no_group",
               "network_id": "net_123",
               "pubkey": "new_user_pub",
               "name": "New User",
@@ -68,12 +71,65 @@
           "db": {
             "state": {
               "invites": [
-                {"id": "invite_123", "invite_pubkey": "invite_pub_123"}
+                {"id": "invite_123", "invite_pubkey": "invite_pub_123", "group_id": "group_123"}
+              ],
+              "groups": [
+                {"id": "group_123", "name": "First Group"}
+              ],
+              "blocked_by_id": {
+                "missing_group_id": [
+                  {
+                    "event_id": "user_no_group",
+                    "reason": "User missing group_id"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "description": "User with valid invite is accepted",
+        "given": {
+          "db": {
+            "state": {
+              "invites": [
+                {"id": "invite_123", "invite_pubkey": "invite_pub_123", "group_id": "group_123"}
+              ],
+              "groups": [
+                {"id": "group_123", "name": "First Group"}
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "user",
+              "id": "user_456",
+              "network_id": "net_123",
+              "group_id": "group_123",
+              "pubkey": "new_user_pub",
+              "name": "New User",
+              "invite_id": "invite_123",
+              "invite_signature": "dummy_invite_sig",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "invites": [
+                {"id": "invite_123", "invite_pubkey": "invite_pub_123", "group_id": "group_123"}
+              ],
+              "groups": [
+                {"id": "group_123", "name": "First Group"}
               ],
               "users": [
                 {
                   "id": "user_456",
                   "network_id": "net_123",
+                  "group_id": "group_123",
                   "pubkey": "new_user_pub",
                   "name": "New User",
                   "invite_id": "invite_123"
@@ -87,13 +143,18 @@
         "description": "User without valid invite is blocked",
         "given": {
           "db": {
-            "state": {}
+            "state": {
+              "groups": [
+                {"id": "group_123", "name": "First Group"}
+              ]
+            }
           },
           "envelope": {
             "data": {
               "type": "user",
               "id": "user_789",
               "network_id": "net_123",
+              "group_id": "group_123",
               "pubkey": "invalid_user_pub",
               "name": "Invalid User",
               "invite_id": "nonexistent_invite",
@@ -105,13 +166,462 @@
         "then": {
           "db": {
             "state": {
-              "blocked": [
+              "groups": [
+                {"id": "group_123", "name": "First Group"}
+              ],
+              "blocked_by_id": {
+                "nonexistent_invite": [
+                  {
+                    "event_id": "user_789",
+                    "reason": "Invite nonexistent_invite not found"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "description": "User blocked when signature is from non-user",
+        "given": {
+          "db": {
+            "state": {
+              "network": {"id": "net_123", "creator_pubkey": "creator_pub"},
+              "users": [
+                {"id": "existing_user", "pubkey": "existing_pub", "network_id": "net_123"}
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "user",
+              "id": "user_fake",
+              "network_id": "net_123",
+              "pubkey": "fake_pub",
+              "name": "Fake User",
+              "signature": "dummy_sig_from_unknown"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "network": {"id": "net_123", "creator_pubkey": "creator_pub"},
+              "users": [
+                {"id": "existing_user", "pubkey": "existing_pub", "network_id": "net_123"}
+              ],
+              "blocked_by_id": {
+                "invalid_signature": [
+                  {
+                    "event_id": "user_fake",
+                    "reason": "Event signed by unknown user"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "description": "Idempotency - processing same user event twice doesn't duplicate",
+        "given": {
+          "db": {
+            "state": {
+              "network": {"id": "net_123", "creator_pubkey": "creator_pub"},
+              "users": [
                 {
-                  "event_id": "user_789",
-                  "blocked_by": "nonexistent_invite",
-                  "reason": "Invite nonexistent_invite not found"
+                  "id": "user_123",
+                  "network_id": "net_123",
+                  "pubkey": "creator_pub",
+                  "name": "Creator"
                 }
               ]
+            },
+            "eventStore": [
+              {
+                "data": {
+                  "type": "user",
+                  "id": "user_123",
+                  "network_id": "net_123",
+                  "pubkey": "creator_pub",
+                  "name": "Creator",
+                  "signature": "dummy_sig"
+                },
+                "metadata": {}
+              }
+            ]
+          },
+          "envelope": {
+            "data": {
+              "type": "user",
+              "id": "user_123",
+              "network_id": "net_123",
+              "pubkey": "creator_pub",
+              "name": "Creator",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "network": {"id": "net_123", "creator_pubkey": "creator_pub"},
+              "users": [
+                {
+                  "id": "user_123",
+                  "network_id": "net_123",
+                  "pubkey": "creator_pub",
+                  "name": "Creator"
+                }
+              ]
+            },
+            "eventStore": [
+              {
+                "data": {
+                  "type": "user",
+                  "id": "user_123",
+                  "network_id": "net_123",
+                  "pubkey": "creator_pub",
+                  "name": "Creator",
+                  "signature": "dummy_sig"
+                },
+                "metadata": {}
+              }
+            ]
+          }
+        }
+      }
+      ,
+      {
+        "description": "Auto-unblocks blocked message when author arrives (same-batch)",
+        "given": {
+          "db": {
+            "eventStore": [
+              {
+                "data": {
+                  "type": "message",
+                  "id": "msg_waiting",
+                  "channel_id": "channel_123",
+                  "author_id": "user_456",
+                  "content": "Hello",
+                  "signature": "dummy_sig"
+                },
+                "metadata": {}
+              }
+            ],
+            "state": {
+              "network": {"id": "net_123", "creator_pubkey": "user_pub"},
+              "channels": [
+                {"id": "channel_123"}
+              ],
+              "blocked_by_id": {
+                "user_456": [
+                  {"event_id": "msg_waiting", "reason": "Author user_456 not found"}
+                ]
+              }
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "user",
+              "id": "user_456",
+              "network_id": "net_123",
+              "pubkey": "user_pub",
+              "name": "User 456",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "ticks": 2,
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_456"}
+              ],
+              "messages": [
+                {"id": "msg_waiting"}
+              ],
+              "ready_to_unblock": {}
+            }
+          }
+        }
+      },
+      {
+        "description": "Auto-unblocks previously blocked invite when creator arrives",
+        "given": {
+          "db": {
+            "eventStore": [
+              {
+                "data": {
+                  "type": "invite",
+                  "id": "invite_456",
+                  "invite_pubkey": "inv_pub",
+                  "network_id": "net_123",
+                  "created_by": "user_creator",
+                  "signature": "dummy_sig"
+                },
+                "metadata": {}
+              }
+            ],
+            "state": {
+              "network": {"id": "net_123", "creator_pubkey": "creator_pub"},
+              "blocked_by_id": {
+                "user_creator": [
+                  {"event_id": "invite_456", "reason": "Creator user user_creator not found"}
+                ]
+              },
+              "users": []
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "user",
+              "id": "user_creator",
+              "network_id": "net_123",
+              "pubkey": "creator_pub",
+              "name": "Creator",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "ticks": 2,
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_creator"}
+              ],
+              "invites": [
+                {"id": "invite_456"}
+              ],
+              "ready_to_unblock": {}
+            }
+          }
+        }
+      },
+      {
+        "description": "Multiple messages blocked by same user are all unblocked",
+        "given": {
+          "db": {
+            "eventStore": [
+              {
+                "data": {
+                  "type": "message",
+                  "id": "msg_1",
+                  "channel_id": "channel_123",
+                  "author_id": "user_456",
+                  "content": "First message",
+                  "signature": "dummy_sig"
+                },
+                "metadata": {}
+              },
+              {
+                "data": {
+                  "type": "message",
+                  "id": "msg_2",
+                  "channel_id": "channel_123",
+                  "author_id": "user_456",
+                  "content": "Second message",
+                  "signature": "dummy_sig"
+                },
+                "metadata": {}
+              }
+            ],
+            "state": {
+              "network": {"id": "net_123", "creator_pubkey": "user_pub"},
+              "channels": [
+                {"id": "channel_123"}
+              ],
+              "blocked_by_id": {
+                "user_456": [
+                  {"event_id": "msg_1", "reason": "Author user_456 not found"},
+                  {"event_id": "msg_2", "reason": "Author user_456 not found"}
+                ]
+              }
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "user",
+              "id": "user_456",
+              "network_id": "net_123",
+              "pubkey": "user_pub",
+              "name": "User 456",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "ticks": 3,
+        "then": {
+          "db": {
+            "state": {
+              "blocked_by_id": {},
+              "users": [
+                {"id": "user_456"}
+              ],
+              "messages": [
+                {"id": "msg_1"},
+                {"id": "msg_2"}
+              ],
+              "ready_to_unblock": {}
+            }
+          }
+        }
+      },
+      {
+        "description": "Cascading unblock - user unblocks message which unblocks other events",
+        "given": {
+          "db": {
+            "eventStore": [
+              {
+                "data": {
+                  "type": "message",
+                  "id": "msg_reply",
+                  "channel_id": "channel_123",
+                  "author_id": "user_789",
+                  "content": "Reply to msg_1",
+                  "reply_to": "msg_1",
+                  "signature": "dummy_sig"
+                },
+                "metadata": {}
+              },
+              {
+                "data": {
+                  "type": "message",
+                  "id": "msg_1",
+                  "channel_id": "channel_123",
+                  "author_id": "user_456",
+                  "content": "Original message",
+                  "signature": "dummy_sig"
+                },
+                "metadata": {}
+              }
+            ],
+            "state": {
+              "network": {"id": "net_123", "creator_pubkey": "user_pub"},
+              "channels": [
+                {"id": "channel_123"}
+              ],
+              "users": [
+                {"id": "user_789"}
+              ],
+              "blocked_by_id": {
+                "user_456": [
+                  {"event_id": "msg_1", "reason": "Author user_456 not found"}
+                ],
+                "msg_1": [
+                  {"event_id": "msg_reply", "reason": "Reply target msg_1 not found"}
+                ]
+              }
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "user",
+              "id": "user_456",
+              "network_id": "net_123",
+              "pubkey": "user_pub",
+              "name": "User 456",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "ticks": 4,
+        "then": {
+          "db": {
+            "state": {
+              "blocked_by_id": {},
+              "users": [
+                {"id": "user_789"},
+                {"id": "user_456"}
+              ],
+              "messages": [
+                {"id": "msg_1"},
+                {"id": "msg_reply"}
+              ],
+              "ready_to_unblock": {}
+            }
+          }
+        }
+      },
+      {
+        "description": "Partial unblock - only events actually blocked by arriving user are unblocked",
+        "given": {
+          "db": {
+            "eventStore": [
+              {
+                "data": {
+                  "type": "message",
+                  "id": "msg_456",
+                  "channel_id": "channel_123",
+                  "author_id": "user_456",
+                  "content": "From user 456",
+                  "signature": "dummy_sig"
+                },
+                "metadata": {}
+              },
+              {
+                "data": {
+                  "type": "message",
+                  "id": "msg_789",
+                  "channel_id": "channel_123",
+                  "author_id": "user_789",
+                  "content": "From user 789",
+                  "signature": "dummy_sig"
+                },
+                "metadata": {}
+              }
+            ],
+            "state": {
+              "network": {"id": "net_123", "creator_pubkey": "user_pub"},
+              "channels": [
+                {"id": "channel_123"}
+              ],
+              "blocked_by_id": {
+                "user_456": [
+                  {"event_id": "msg_456", "reason": "Author user_456 not found"}
+                ],
+                "user_789": [
+                  {"event_id": "msg_789", "reason": "Author user_789 not found"}
+                ]
+              }
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "user",
+              "id": "user_456",
+              "network_id": "net_123",
+              "pubkey": "user_pub",
+              "name": "User 456",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "ticks": 2,
+        "then": {
+          "db": {
+            "state": {
+              "blocked_by_id": {
+                "user_789": [
+                  {"event_id": "msg_789", "reason": "Author user_789 not found"}
+                ]
+              },
+              "users": [
+                {"id": "user_456"}
+              ],
+              "messages": [
+                {"id": "msg_456"}
+              ],
+              "ready_to_unblock": {}
             }
           }
         }
@@ -131,13 +641,16 @@
                   {"pubkey": "joiner_pub", "privkey": "joiner_priv", "name": "Joiner"}
                 ],
                 "invites": [
-                  {"id": "invite_123", "invite_pubkey": "invite_pub_1e1541452d6b4f09", "network_id": "net_123"}
+                  {"id": "invite_123", "invite_pubkey": "invite_pub_1e1541452d6b4f09", "network_id": "net_123", "group_id": "group_123"}
+                ],
+                "groups": [
+                  {"id": "group_123", "name": "First Group"}
                 ]
               }
             },
             "params": {
               "identityId": "joiner_pub",
-              "inviteLink": "signed-groups://invite/eyJpbnZpdGVfc2VjcmV0IjoiaW52aXRlX3NlY3JldF8xMjMiLCJuZXR3b3JrX2lkIjoibmV0XzEyMyIsIm5ldHdvcmtfbmFtZSI6IlRlc3QgTmV0d29yayJ9"
+              "inviteLink": "signed-groups://invite/eyJpbnZpdGVfc2VjcmV0IjogImludml0ZV9zZWNyZXRfMTIzIiwgIm5ldHdvcmtfaWQiOiAibmV0XzEyMyIsICJuZXR3b3JrX25hbWUiOiAiVGVzdCBOZXR3b3JrIiwgImdyb3VwX2lkIjogImdyb3VwXzEyMyJ9"
             }
           },
           "then": {
@@ -151,6 +664,7 @@
                   "type": "user",
                   "id": "*",
                   "network_id": "net_123",
+                  "group_id": "group_123",
                   "pubkey": "joiner_pub",
                   "name": "Joiner",
                   "invite_id": "*",

@@ -5,6 +5,7 @@
     "func": "projector.project",
     "tests": [
       {
+        "description": "Invite blocked without group_id",
         "given": {
           "db": {
             "state": {
@@ -16,7 +17,7 @@
           "envelope": {
             "data": {
               "type": "invite",
-              "id": "invite_id_123",
+              "id": "invite_no_group",
               "invite_pubkey": "invite_pub_123",
               "network_id": "net_123",
               "created_by": "user_123",
@@ -31,11 +32,59 @@
               "users": [
                 {"id": "user_123", "pubkey": "inviter_pub", "network_id": "net_123"}
               ],
+              "blocked_by_id": {
+                "missing_group_id": [
+                  {
+                    "event_id": "invite_no_group",
+                    "reason": "Invite missing group_id"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "description": "Valid invite with group_id",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "inviter_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {"id": "group_123", "name": "First Group", "created_by": "user_123"}
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "invite",
+              "id": "invite_id_123",
+              "invite_pubkey": "invite_pub_123",
+              "network_id": "net_123",
+              "group_id": "group_123",
+              "created_by": "user_123",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "inviter_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {"id": "group_123", "name": "First Group", "created_by": "user_123"}
+              ],
               "invites": [
                 {
                   "id": "invite_id_123",
                   "invite_pubkey": "invite_pub_123",
                   "network_id": "net_123",
+                  "group_id": "group_123",
                   "created_by": "user_123"
                 }
               ]
@@ -53,6 +102,113 @@
                 "metadata": {}
               }
             ]
+          }
+        }
+      },
+      {
+        "description": "Invite blocked when signature is from non-user",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "inviter_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {"id": "group_123", "name": "First Group"}
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "invite",
+              "id": "invite_fake",
+              "invite_pubkey": "invite_pub_fake",
+              "network_id": "net_123",
+              "group_id": "group_123",
+              "created_by": "user_123",
+              "signature": "dummy_sig_from_unknown"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "inviter_pub", "network_id": "net_123"}
+              ],
+              "blocked_by_id": {
+                "invalid_signature": [
+                  {
+                    "event_id": "invite_fake",
+                    "reason": "Event signed by unknown user"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "description": "Auto-unblocks user waiting for this invite",
+        "given": {
+          "db": {
+            "eventStore": [
+              {
+                "data": {
+                  "type": "user",
+                  "id": "user_waiting",
+                  "network_id": "net_123",
+                  "group_id": "group_123",
+                  "pubkey": "waiting_user_pub",
+                  "name": "Waiting User",
+                  "invite_id": "invite_new",
+                  "invite_signature": "dummy_invite_sig",
+                  "signature": "dummy_sig"
+                },
+                "metadata": {}
+              }
+            ],
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "inviter_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {"id": "group_123", "name": "First Group"}
+              ],
+              "blocked_by_id": {
+                "invite_new": [
+                  {"event_id": "user_waiting", "reason": "Invite invite_new not found"}
+                ]
+              }
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "invite",
+              "id": "invite_new",
+              "invite_pubkey": "invite_pub_new",
+              "network_id": "net_123",
+              "group_id": "group_123",
+              "created_by": "user_123",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "ticks": 2,
+        "then": {
+          "db": {
+            "state": {
+              "invites": [
+                {"id": "invite_new"}
+              ],
+              "users": [
+                {"id": "user_123"},
+                {"id": "user_waiting"}
+              ],
+              "ready_to_unblock": {}
+            }
           }
         }
       }
@@ -73,6 +229,9 @@
                 ],
                 "users": [
                   {"id": "user_123", "pubkey": "inviter_pub", "network_id": "net_123"}
+                ],
+                "groups": [
+                  {"id": "group_123", "name": "First Group", "created_by": "user_123"}
                 ]
               }
             },
@@ -92,6 +251,7 @@
                   "id": "*",
                   "invite_pubkey": "*",
                   "network_id": "net_123",
+                  "group_id": "group_123",
                   "created_by": "user_123",
                   "signature": "*"
                 }

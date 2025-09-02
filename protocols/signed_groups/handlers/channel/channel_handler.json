@@ -1,0 +1,138 @@
+{
+  "type": "channel",
+  "projector": {
+    "description": "Projects channel events",
+    "func": "projector.project", 
+    "tests": [
+      {
+        "description": "Channel created by network member",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"}
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "channel",
+              "id": "channel_123",
+              "network_id": "net_123",
+              "name": "General",
+              "created_by": "user_123",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"}
+              ],
+              "channels": [
+                {
+                  "id": "channel_123",
+                  "network_id": "net_123",
+                  "name": "General",
+                  "created_by": "user_123"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "description": "Channel blocked when signature is from non-user",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"}
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "channel",
+              "id": "channel_fake",
+              "network_id": "net_123",
+              "name": "Fake Channel",
+              "created_by": "user_123",
+              "signature": "dummy_sig_from_unknown"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"}
+              ],
+              "blocked_by_id": {
+                "invalid_signature": [
+                  {
+                    "event_id": "channel_fake",
+                    "reason": "Event signed by unknown user"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "description": "Auto-unblocks blocked message when channel arrives (same-batch)",
+        "given": {
+          "db": {
+            "eventStore": [
+              {
+                "data": {
+                  "type": "message",
+                  "id": "msg_c",
+                  "channel_id": "chan_1",
+                  "author_id": "user_1",
+                  "content": "Hi",
+                  "signature": "dummy_sig"
+                },
+                "metadata": {}
+              }
+            ],
+            "state": {
+              "users": [ {"id": "user_1", "pubkey": "pk1", "network_id": "net_1"} ],
+              "blocked_by_id": {
+                "chan_1": [
+                  {"event_id": "msg_c", "reason": "Channel chan_1 not found"}
+                ]
+              }
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "channel",
+              "id": "chan_1",
+              "network_id": "net_1",
+              "name": "Ch",
+              "created_by": "user_1",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "ticks": 2,
+        "then": {
+          "db": {
+            "state": {
+              "messages": [ {"id": "msg_c"} ],
+              "channels": [ {"id": "chan_1"} ],
+              "ready_to_unblock": {}
+            }
+          }
+        }
+      }
+    ]
+  }
+}

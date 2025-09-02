@@ -39,6 +39,14 @@ def execute(params, db):
     if not network:
         raise ValueError("No network found")
     
+    # Find the first group (required for invites)
+    groups = state.get('groups', [])
+    if not groups:
+        raise ValueError("No groups found - at least one group is required")
+    
+    # Use the first group
+    first_group = groups[0]
+    
     # Generate invite secret and derive public key
     import time
     time_ms = int(time.time() * 1000)
@@ -57,15 +65,17 @@ def execute(params, db):
         'id': invite_id,
         'invite_pubkey': invite_pubkey,
         'network_id': network['id'],
+        'group_id': first_group['id'],
         'created_by': user['id'],
         'signature': signature
     }
     
-    # Create invite link data
+    # Create invite link data (include group_id in link)
     invite_data = {
         'invite_secret': invite_secret,
         'network_id': network['id'],
-        'network_name': network['name']
+        'network_name': network['name'],
+        'group_id': first_group['id']
     }
     
     # Encode invite link

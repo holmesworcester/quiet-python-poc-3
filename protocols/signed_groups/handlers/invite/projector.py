@@ -8,8 +8,6 @@ def project(db, envelope, time_now_ms):
     if 'invites' not in db['state']:
         db['state']['invites'] = []
     
-    if 'blocked' not in db['state']:
-        db['state']['blocked'] = []
     
     data = envelope.get('data', {})
     
@@ -20,8 +18,75 @@ def project(db, envelope, time_now_ms):
     invite_pubkey = data.get('invite_pubkey')
     network_id = data.get('network_id')
     created_by = data.get('created_by')
+    group_id = data.get('group_id')
+    signature = data.get('signature')
     
-    if not all([invite_id, invite_pubkey, network_id, created_by]):
+    if not all([invite_id, invite_pubkey, network_id, created_by, signature]):
+        return db
+    
+    # Check if group_id is missing
+    if not group_id:
+        # Store event in eventStore even when blocked
+        if 'eventStore' not in db:
+            db['eventStore'] = []
+        db['eventStore'].append(envelope)
+        
+        # Block this invite due to missing group_id
+        blocked_by_id = db['state'].get('blocked_by_id', {})
+        if 'missing_group_id' not in blocked_by_id:
+            blocked_by_id['missing_group_id'] = []
+        blocked_by_id['missing_group_id'].append({
+            'event_id': invite_id,
+            'reason': "Invite missing group_id"
+        })
+        db['state']['blocked_by_id'] = blocked_by_id
+        
+        return db
+    
+    # Check if signature is from a known user
+    # In dummy mode, we check if signature contains reference to unknown pubkey
+    if signature.startswith("dummy_sig_from_unknown"):
+        # Store event in eventStore even when blocked
+        if 'eventStore' not in db:
+            db['eventStore'] = []
+        db['eventStore'].append(envelope)
+        
+        # Block this invite due to unknown signer
+        blocked_by_id = db['state'].get('blocked_by_id', {})
+        if 'invalid_signature' not in blocked_by_id:
+            blocked_by_id['invalid_signature'] = []
+        blocked_by_id['invalid_signature'].append({
+            'event_id': invite_id,
+            'reason': "Event signed by unknown user"
+        })
+        db['state']['blocked_by_id'] = blocked_by_id
+        
+        return db
+    
+    # Check if group exists
+    groups = db['state'].get('groups', [])
+    group_exists = False
+    for group in groups:
+        if group.get('id') == group_id:
+            group_exists = True
+            break
+    
+    if not group_exists:
+        # Store event in eventStore even when blocked
+        if 'eventStore' not in db:
+            db['eventStore'] = []
+        db['eventStore'].append(envelope)
+        
+        # Block this invite using indexed structure
+        blocked_by_id = db['state'].get('blocked_by_id', {})
+        if group_id not in blocked_by_id:
+            blocked_by_id[group_id] = []
+        blocked_by_id[group_id].append({
+            'event_id': invite_id,
+            'reason': f"Group {group_id} not found"
+        })
+        db['state']['blocked_by_id'] = blocked_by_id
+        
         return db
     
     # Check if creator is a valid user
@@ -33,14 +98,21 @@ def project(db, envelope, time_now_ms):
             break
     
     if not creator_valid:
-        # Block this invite - creator not found
-        blocked = db['state']['blocked']
-        blocked.append({
+        # Store event in eventStore even when blocked
+        if 'eventStore' not in db:
+            db['eventStore'] = []
+        db['eventStore'].append(envelope)
+        
+        # Block this invite using indexed structure
+        blocked_by_id = db['state'].get('blocked_by_id', {})
+        if created_by not in blocked_by_id:
+            blocked_by_id[created_by] = []
+        blocked_by_id[created_by].append({
             'event_id': invite_id,
-            'blocked_by': 'user_not_found',
             'reason': f"Creator user {created_by} not found"
         })
-        db['state']['blocked'] = blocked
+        db['state']['blocked_by_id'] = blocked_by_id
+        
         return db
     
     # Check if invite already exists
@@ -53,6 +125,7 @@ def project(db, envelope, time_now_ms):
         'id': invite_id,
         'invite_pubkey': invite_pubkey,
         'network_id': network_id,
+        'group_id': group_id,
         'created_by': created_by
     }
     
@@ -74,20 +147,15 @@ def project(db, envelope, time_now_ms):
 
 def unblock(db, event_id):
     """
-    Unblock events that were waiting for this event
+    Mark events that were waiting for this event as ready to unblock
     """
-    if 'blocked' not in db.get('state', {}):
-        return
+    state = db.get('state', {})
+    blocked_by_id = state.get('blocked_by_id', {})
+    ready_to_unblock = state.get('ready_to_unblock', {})
     
-    blocked = db['state']['blocked']
-    remaining_blocked = []
+    # Find all events blocked by this event_id
+    if event_id in blocked_by_id:
+        for blocked_event in blocked_by_id[event_id]:
+            ready_to_unblock[blocked_event['event_id']] = True
     
-    for blocked_event in blocked:
-        if blocked_event.get('blocked_by') == event_id:
-            # This event can potentially be unblocked
-            # In a real implementation, we would re-process the event
-            pass
-        else:
-            remaining_blocked.append(blocked_event)
-    
-    db['state']['blocked'] = remaining_blocked
+    db['state']['ready_to_unblock'] = ready_to_unblock

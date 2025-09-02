@@ -25,9 +25,10 @@ def execute(params, db):
     
     invite_secret = invite_data.get('invite_secret')
     network_id = invite_data.get('network_id')
+    group_id = invite_data.get('group_id')
     
-    if not invite_secret or not network_id:
-        raise ValueError("Invalid invite data")
+    if not invite_secret or not network_id or not group_id:
+        raise ValueError("Invalid invite data - missing required fields")
     
     state = db.get('state', {})
     
@@ -70,6 +71,7 @@ def execute(params, db):
         'type': 'user',
         'id': user_id,
         'network_id': network_id,
+        'group_id': group_id,  # From invite
         'pubkey': identity_id,
         'name': identity['name'],
         'invite_id': invite['id'],

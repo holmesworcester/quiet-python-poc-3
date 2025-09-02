@@ -75,6 +75,8 @@ def run_all_jobs(db, time_now_ms):
         try:
             # Execute the job command using run_command
             input_data = {"time_now_ms": time_now_ms}
+            if os.environ.get("TEST_MODE"):
+                print(f"[tick] Running job {handler_name}.{job_command}")
             db, result = run_command(handler_name, job_command, input_data, db, time_now_ms)
             
         except Exception as e:

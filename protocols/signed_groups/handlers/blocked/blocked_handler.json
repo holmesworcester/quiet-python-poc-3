@@ -3,99 +3,37 @@
   "projector": {
     "description": "Handles blocked events tracking",
     "func": "projector.project",
-    "tests": [
-      {
-        "description": "Blocked list is initialized when projector runs",
-        "given": {
-          "db": {"state": {}},
-          "envelope": {
-            "data": {
-              "type": "blocked",
-              "id": "block_init"
-            },
-            "metadata": {}
-          }
-        },
-        "then": {
-          "db": {
-            "state": {
-              "blocked": []
-            }
-          }
-        }
-      }
-    ]
+    "tests": []
   },
+  "job": "process_unblocked",
   "commands": {
-    "unblock": {
-      "description": "Attempts to unblock events after new events are processed",
-      "func": "unblock.execute",
-      "tests": [
-        {
-          "given": {
-            "db": {
-              "state": {
-                "blocked": [
-                  {"event_id": "msg_123", "blocked_by": "user_456", "reason": "User not found"},
-                  {"event_id": "msg_456", "blocked_by": "channel_789", "reason": "Channel not found"}
-                ],
-                "users": [
-                  {"id": "user_456", "pubkey": "user_pub"}
-                ]
-              }
-            },
-            "params": {
-              "eventId": "user_456"
-            }
-          },
-          "then": {
-            "return": {
-              "api_response": {
-                "unblockedCount": 1
-              }
-            },
-            "db": {
-              "state": {
-                "blocked": [
-                  {"event_id": "msg_456", "blocked_by": "channel_789", "reason": "Channel not found"}
-                ],
-                "users": [
-                  {"id": "user_456", "pubkey": "user_pub"}
-                ]
-              }
-            }
-          }
-        }
-      ]
-    },
     "list": {
       "description": "Lists all blocked events",
       "func": "list.execute",
       "tests": [
         {
           "given": {
-            "db": {
-              "state": {
-                "blocked": [
-                  {"event_id": "evt_1", "blocked_by": "dep_1", "reason": "Missing dependency"},
-                  {"event_id": "evt_2", "blocked_by": "dep_2", "reason": "Invalid signature"}
-                ]
-              }
-            },
+            "db": {"state": {"blocked_by_id": {
+              "dep_1": [{"event_id": "evt_1", "reason": "Missing dependency"}],
+              "dep_2": [{"event_id": "evt_2", "reason": "Invalid signature"}]
+            }}},
             "params": {}
           },
           "then": {
-            "return": {
-              "api_response": {
-                "blocked": [
-                  {"event_id": "evt_1", "blocked_by": "dep_1", "reason": "Missing dependency"},
-                  {"event_id": "evt_2", "blocked_by": "dep_2", "reason": "Invalid signature"}
-                ]
-              }
-            }
+            "return": {"api_response": {
+              "blocked": [
+                {"event_id": "evt_1", "blocked_by": "dep_1", "reason": "Missing dependency"},
+                {"event_id": "evt_2", "blocked_by": "dep_2", "reason": "Invalid signature"}
+              ]
+            }}
           }
         }
       ]
+    },
+    "process_unblocked": {
+      "description": "Process events marked as ready to unblock",
+      "func": "process_unblocked.execute",
+      "tests": []
     }
   }
 }
