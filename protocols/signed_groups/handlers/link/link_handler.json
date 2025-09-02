@@ -1,0 +1,285 @@
+{
+  "type": "link",
+  "projector": {
+    "description": "Projects link events that associate devices with users",
+    "func": "projector.project",
+    "tests": [
+      {
+        "description": "Valid link is accepted",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "user_pub", "network_id": "net_123"}
+              ],
+              "link_invites": [
+                {
+                  "id": "link_invite_123",
+                  "link_invite_pubkey": "link_pub_123",
+                  "user_id": "user_123"
+                }
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "link",
+              "id": "link_123",
+              "peer_id": "new_device_123",
+              "user_id": "user_123",
+              "link_invite_id": "link_invite_123",
+              "link_invite_signature": "dummy_link_sig",
+              "signature": "dummy_sig_signed_by_new_device_123"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "user_pub", "network_id": "net_123"}
+              ],
+              "link_invites": [
+                {
+                  "id": "link_invite_123",
+                  "link_invite_pubkey": "link_pub_123",
+                  "user_id": "user_123"
+                }
+              ],
+              "links": [
+                {
+                  "id": "link_123",
+                  "peer_id": "new_device_123",
+                  "user_id": "user_123",
+                  "link_invite_id": "link_invite_123"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "description": "Link blocked when link-invite doesn't exist",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "user_pub", "network_id": "net_123"}
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "link",
+              "id": "link_456",
+              "peer_id": "new_device_456",
+              "user_id": "user_123",
+              "link_invite_id": "nonexistent_invite",
+              "link_invite_signature": "dummy_link_sig",
+              "signature": "dummy_sig_signed_by_new_device_456"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "user_pub", "network_id": "net_123"}
+              ],
+              "blocked_by_id": {
+                "nonexistent_invite": [
+                  {
+                    "event_id": "link_456",
+                    "reason": "Link-invite nonexistent_invite not found"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "description": "Link blocked when signature doesn't match peer_id",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "user_pub", "network_id": "net_123"}
+              ],
+              "link_invites": [
+                {
+                  "id": "link_invite_123",
+                  "link_invite_pubkey": "link_pub_123",
+                  "user_id": "user_123"
+                }
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "link",
+              "id": "link_fake",
+              "peer_id": "new_device_789",
+              "user_id": "user_123",
+              "link_invite_id": "link_invite_123",
+              "link_invite_signature": "dummy_link_sig",
+              "signature": "dummy_sig_signed_by_wrong_device"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "user_pub", "network_id": "net_123"}
+              ],
+              "link_invites": [
+                {
+                  "id": "link_invite_123",
+                  "link_invite_pubkey": "link_pub_123",
+                  "user_id": "user_123"
+                }
+              ],
+              "blocked_by_id": {
+                "signature_mismatch": [
+                  {
+                    "event_id": "link_fake",
+                    "reason": "Signature does not match claimed peer new_device_789"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "description": "Link blocked when user_id doesn't match link-invite",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "user_pub", "network_id": "net_123"},
+                {"id": "user_456", "pubkey": "other_pub", "network_id": "net_123"}
+              ],
+              "link_invites": [
+                {
+                  "id": "link_invite_123",
+                  "link_invite_pubkey": "link_pub_123",
+                  "user_id": "user_123"
+                }
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "link",
+              "id": "link_mismatch",
+              "peer_id": "new_device_999",
+              "user_id": "user_456",
+              "link_invite_id": "link_invite_123",
+              "link_invite_signature": "dummy_link_sig",
+              "signature": "dummy_sig_signed_by_new_device_999"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "user_pub", "network_id": "net_123"},
+                {"id": "user_456", "pubkey": "other_pub", "network_id": "net_123"}
+              ],
+              "link_invites": [
+                {
+                  "id": "link_invite_123",
+                  "link_invite_pubkey": "link_pub_123",
+                  "user_id": "user_123"
+                }
+              ],
+              "blocked_by_id": {
+                "user_mismatch": [
+                  {
+                    "event_id": "link_mismatch",
+                    "reason": "User ID user_456 doesn't match link-invite user user_123"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "description": "Auto-unblocks message waiting for linked peer",
+        "given": {
+          "db": {
+            "eventStore": [
+              {
+                "data": {
+                  "type": "message",
+                  "id": "msg_from_new_device",
+                  "channel_id": "channel_123",
+                  "peer_id": "new_device_123",
+                  "user_id": "user_123",
+                  "author_id": "user_123",
+                  "content": "Hello from my new device",
+                  "signature": "dummy_sig_signed_by_new_device_123"
+                },
+                "metadata": {}
+              }
+            ],
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "user_pub", "network_id": "net_123"}
+              ],
+              "channels": [
+                {"id": "channel_123", "network_id": "net_123"}
+              ],
+              "link_invites": [
+                {
+                  "id": "link_invite_123",
+                  "link_invite_pubkey": "link_pub_123",
+                  "user_id": "user_123"
+                }
+              ],
+              "blocked_by_id": {
+                "new_device_123": [
+                  {"event_id": "msg_from_new_device", "reason": "Peer new_device_123 not linked to any user"}
+                ]
+              }
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "link",
+              "id": "link_123",
+              "peer_id": "new_device_123",
+              "user_id": "user_123",
+              "link_invite_id": "link_invite_123",
+              "link_invite_signature": "dummy_link_sig",
+              "signature": "dummy_sig_signed_by_new_device_123"
+            },
+            "metadata": {}
+          }
+        },
+        "ticks": 2,
+        "then": {
+          "db": {
+            "state": {
+              "links": [
+                {"id": "link_123"}
+              ],
+              "messages": [
+                {"id": "msg_from_new_device"}
+              ],
+              "ready_to_unblock": {}
+            }
+          }
+        }
+      }
+    ]
+  }
+}

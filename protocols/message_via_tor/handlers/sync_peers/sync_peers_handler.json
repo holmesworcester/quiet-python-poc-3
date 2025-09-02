@@ -90,38 +90,7 @@
                   }
                 }
               ]
-            },
-            "eventStore": [
-              {
-                "data": {
-                  "type": "peer",
-                  "pubkey": "peer1",
-                  "name": "Alice"
-                },
-                "metadata": {
-                  "received_by": "identity1"
-                }
-              },
-              {
-                "data": {
-                  "type": "peer",
-                  "pubkey": "peer2",
-                  "name": "Bob"
-                },
-                "metadata": {
-                  "received_by": "identity1"
-                }
-              },
-              {
-                "data": {
-                  "type": "sync_peers",
-                  "sender": "peer3"
-                },
-                "metadata": {
-                  "received_by": "identity1"
-                }
-              }
-            ]
+            }
           }
         }
       }

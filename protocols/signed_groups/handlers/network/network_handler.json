@@ -12,8 +12,7 @@
               "type": "network",
               "id": "network_id_123",
               "name": "Test Network",
-              "creator_pubkey": "test_pubkey_123",
-              "signature": "dummy_signature_123"
+              "creator_pubkey": "test_pubkey_123"
             },
             "metadata": {}
           }
@@ -33,8 +32,7 @@
                   "type": "network",
                   "id": "network_id_123",
                   "name": "Test Network",
-                  "creator_pubkey": "test_pubkey_123",
-                  "signature": "dummy_signature_123"
+                  "creator_pubkey": "test_pubkey_123"
                 },
                 "metadata": {}
               }
@@ -74,8 +72,7 @@
                   "type": "network",
                   "id": "*",
                   "name": "My Network",
-                  "creator_pubkey": "creator_pub",
-                  "signature": "*"
+                  "creator_pubkey": "creator_pub"
                 },
                 {
                   "type": "user",

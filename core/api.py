@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """
-Execute API requests against a protocol by mapping OpenAPI operations to commands.
-Usage: python api.py <protocol_name> <method> <path> [--data '{}'] [--params '{}'] [--identity <id>]
+Minimal HTTP-like API executor.
 
-Examples:
-  python api.py message_via_tor POST /messages --data '{"text": "Hello"}'
-  python api.py message_via_tor GET /messages/peer123 --params '{"limit": 5}'
-  python api.py message_via_tor POST /identities
+Maps OpenAPI operationIds to handler commands and executes them using the
+framework command runner. Designed for local tooling and tests.
 """
 
 import sys
@@ -15,28 +12,23 @@ import json
 import yaml
 import argparse
 import re
+from contextlib import contextmanager
 from pathlib import Path
-from urllib.parse import parse_qs
 from core.command import run_command
 
 def load_yaml(filepath):
-    """Load and parse a YAML file."""
     with open(filepath, 'r') as f:
         return yaml.safe_load(f)
 
 def match_path_to_operation(api_spec, method, request_path):
-    """
-    Match an HTTP method and path to an OpenAPI operation.
-    Returns (matched_path, operation, path_params) or (None, None, None).
-    """
+    """Return (spec_path, operation, path_params) for a method and path."""
     method = method.lower()
     
     for spec_path, path_item in api_spec.get("paths", {}).items():
         if method not in path_item:
             continue
             
-        # Convert OpenAPI path to regex
-        # Replace {param} with named capture groups
+        # Convert OpenAPI path to regex by replacing {param} with named groups
         pattern = spec_path
         param_names = re.findall(r'\{([^}]+)\}', spec_path)
         for param_name in param_names:
@@ -54,7 +46,7 @@ def match_path_to_operation(api_spec, method, request_path):
     return None, None, None
 
 def extract_handler_command(operation_id):
-    """Extract handler name and command name from operationId."""
+    """Extract (handler, command) from operationId like 'handler.command'."""
     if '.' not in operation_id:
         raise ValueError(f"Invalid operationId format: {operation_id}")
     
@@ -62,10 +54,7 @@ def extract_handler_command(operation_id):
     return parts[0], parts[1]
 
 def prepare_command_input(operation, path_params, query_params, body_data):
-    """
-    Prepare input data for command based on OpenAPI operation definition.
-    Combines path parameters, query parameters, and request body.
-    """
+    """Merge path params, query params and body into a single dict."""
     input_data = {}
     
     # Add path parameters
@@ -74,9 +63,7 @@ def prepare_command_input(operation, path_params, query_params, body_data):
     
     # Add query parameters
     if query_params:
-        # Convert query string format to dict
         for key, value in query_params.items():
-            # query_params might have lists, take first value
             if isinstance(value, list):
                 input_data[key] = value[0] if value else None
             else:
@@ -84,14 +71,12 @@ def prepare_command_input(operation, path_params, query_params, body_data):
     
     # Add body data
     if body_data:
-        # If we have both params and body, merge them
-        # Body takes precedence over params with same name
         input_data.update(body_data)
     
     return input_data
 
 def format_response(result, method, status_code=200):
-    """Format command result as HTTP-style response."""
+    """Format a command result into a simple HTTP-like response dict."""
     response = {
         "status": status_code,
         "headers": {
@@ -109,8 +94,7 @@ def format_response(result, method, status_code=200):
             response["body"]['newEvents'] = result['newEvents']
     elif isinstance(result, dict):
         # Remove internal fields from response but keep newEvents
-        body = {k: v for k, v in result.items() 
-                if k not in ['db', 'newlyCreatedEvents']}
+        body = {k: v for k, v in result.items() if k not in ['db', 'newlyCreatedEvents']}
         
         # If handler wants to format response, let it do so
         # Otherwise return the cleaned result as-is
@@ -120,8 +104,28 @@ def format_response(result, method, status_code=200):
     
     return response
 
+@contextmanager
+def _temp_env(**pairs):
+    """Temporarily set environment variables inside a context."""
+    old = {}
+    for k, v in pairs.items():
+        old[k] = os.environ.get(k)
+        if v is None:
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = str(v)
+    try:
+        yield
+    finally:
+        for k, v in old.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
 def execute_api(protocol_name, method, path, data=None, params=None):
-    """Execute an API request against a protocol."""
+    """Execute an API request against a protocol using its api.yaml mapping."""
     protocol_path = Path("protocols") / protocol_name
     
     # Check if protocol exists
@@ -143,10 +147,7 @@ def execute_api(protocol_name, method, path, data=None, params=None):
     try:
         api_spec = load_yaml(api_yaml_path)
     except Exception as e:
-        return {
-            "status": 500,
-            "body": {"error": f"Failed to parse api.yaml: {str(e)}"}
-        }
+        return {"status": 500, "body": {"error": f"Failed to parse api.yaml: {e}"}}
     
     # Match path to operation
     spec_path, operation, path_params = match_path_to_operation(api_spec, method, path)
@@ -167,74 +168,26 @@ def execute_api(protocol_name, method, path, data=None, params=None):
     
     # Special handling for tick endpoint
     if operation_id == "tick.run":
-        # Set handler path to protocol handlers
-        old_handler_path = os.environ.get("HANDLER_PATH")
-        os.environ["HANDLER_PATH"] = str(protocol_path / "handlers")
-        
-        # Set crypto mode to dummy for testing
-        old_crypto_mode = os.environ.get("CRYPTO_MODE")
-        os.environ["CRYPTO_MODE"] = "dummy"
-        
         try:
-            # Use persistent database for tick operation
             from core.db import create_db
-            import copy
-            
-            # Get DB path from environment or use a default
+            from core.tick import tick as run_tick
+
             db_path = os.environ.get('API_DB_PATH', 'api.db')
-            
-            # Create database with protocol name for schema loading
-            db = create_db(db_path=db_path, protocol_name=protocol_name)
-            
-            # If data provided, update the persistent db
-            if data and "db" in data:
-                provided_db = data["db"]
-                # Update persistent db with provided data
-                for key, value in provided_db.items():
-                    db[key] = value
-            
-            # Store before state for comparison
-            before_state = copy.deepcopy(db.to_dict())
-            
-            # Get time from request
-            time_now_ms = None
-            if data and "time_now_ms" in data:
-                time_now_ms = data["time_now_ms"]
-            
-            # Run tick with persistent db
-            from core.tick import tick
-            updated_db = tick(db, time_now_ms=time_now_ms)
-            
-            # Convert persistent db to dict for response
-            after_state = updated_db.to_dict() if hasattr(updated_db, 'to_dict') else updated_db
-            
-            # Return tick results
-            return {
-                "status": 200,
-                "headers": {"Content-Type": "application/json"},
-                "body": {
-                    "jobsRun": 5,  # Number of handlers with jobs
-                    "eventsProcessed": 0  # Would need to track this
-                }
-            }
-            
+            # Use protocol handlers and honor existing CRYPTO_MODE; default to real
+            crypto_mode = os.environ.get("CRYPTO_MODE") or "real"
+            with _temp_env(HANDLER_PATH=str(protocol_path / "handlers"), CRYPTO_MODE=crypto_mode):
+                db = create_db(db_path=db_path, protocol_name=protocol_name)
+
+                if data and isinstance(data.get("db"), dict):
+                    for k, v in data["db"].items():
+                        db[k] = v
+
+                time_now_ms = (data or {}).get("time_now_ms")
+                run_tick(db, time_now_ms=time_now_ms)
+
+            return {"status": 200, "headers": {"Content-Type": "application/json"}, "body": {"jobsRun": 5, "eventsProcessed": 0}}
         except Exception as e:
-            return {
-                "status": 500,
-                "body": {"error": f"Tick execution failed: {str(e)}"}
-            }
-        finally:
-            # Restore original handler path
-            if old_handler_path:
-                os.environ["HANDLER_PATH"] = old_handler_path
-            else:
-                os.environ.pop("HANDLER_PATH", None)
-            
-            # Restore original crypto mode
-            if old_crypto_mode:
-                os.environ["CRYPTO_MODE"] = old_crypto_mode
-            else:
-                os.environ.pop("CRYPTO_MODE", None)
+            return {"status": 500, "body": {"error": f"Tick execution failed: {e}"}}
     
     # Extract handler and command for regular operations
     try:
@@ -247,60 +200,24 @@ def execute_api(protocol_name, method, path, data=None, params=None):
     
     # Prepare command input
     input_data = prepare_command_input(operation, path_params, params, data)
-    
-    # Set handler path to protocol handlers
-    old_handler_path = os.environ.get("HANDLER_PATH")
-    os.environ["HANDLER_PATH"] = str(protocol_path / "handlers")
-    
-    # Set crypto mode to dummy for testing
-    old_crypto_mode = os.environ.get("CRYPTO_MODE")
-    os.environ["CRYPTO_MODE"] = "dummy"
-    
     try:
-        # Use persistent database
         from core.db import create_db
-        
-        # Get DB path from environment or use a default
         db_path = os.environ.get('API_DB_PATH', 'api.db')
-        
-        # Create database with protocol name for schema loading
-        db = create_db(db_path=db_path, protocol_name=protocol_name)
-        
-        # If data provided, update the persistent db
-        if data and "db" in data:
-            provided_db = data["db"]
-            # Update persistent db with provided data
-            for key, value in provided_db.items():
-                db[key] = value
-        
-        # Execute command
-        db, result = run_command(handler_name, command_name, input_data, db)
-        
-        # Format response
+        # Use protocol handlers and honor existing CRYPTO_MODE; default to real
+        crypto_mode = os.environ.get("CRYPTO_MODE") or "real"
+        with _temp_env(HANDLER_PATH=str(protocol_path / "handlers"), CRYPTO_MODE=crypto_mode):
+            db = create_db(db_path=db_path, protocol_name=protocol_name)
+
+            if data and isinstance(data.get("db"), dict):
+                for k, v in data["db"].items():
+                    db[k] = v
+
+            db, result = run_command(handler_name, command_name, input_data, db)
+
         status_code = 201 if method.upper() == "POST" else 200
-        response = format_response(result, method, status_code)
-        
-        # Don't add db to response - we're using persistent database now
-        
-        return response
-        
+        return format_response(result, method, status_code)
     except Exception as e:
-        return {
-            "status": 500,
-            "body": {"error": f"Command execution failed: {str(e)}"}
-        }
-    finally:
-        # Restore original handler path
-        if old_handler_path:
-            os.environ["HANDLER_PATH"] = old_handler_path
-        else:
-            os.environ.pop("HANDLER_PATH", None)
-        
-        # Restore original crypto mode
-        if old_crypto_mode:
-            os.environ["CRYPTO_MODE"] = old_crypto_mode
-        else:
-            os.environ.pop("CRYPTO_MODE", None)
+        return {"status": 500, "body": {"error": f"Command execution failed: {e}"}}
 
 def main():
     parser = argparse.ArgumentParser(description="Execute API requests against a protocol")

@@ -84,6 +84,13 @@ def project(db, envelope, time_now_ms):
     
     state = db['state']
     state['groups'].append(group_data)
+    # Sort groups by ID for deterministic ordering
+    state['groups'].sort(key=lambda g: g['id'])
+    
+    # Track the first group in the network
+    if 'first_group_id' not in state:
+        state['first_group_id'] = group_id
+    
     db['state'] = state
     
     if 'eventStore' not in db:

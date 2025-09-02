@@ -134,6 +134,8 @@ def project(db, envelope, time_now_ms):
     
     state = db['state']
     state['adds'].append(add_data)
+    # Sort adds by ID for deterministic ordering
+    state['adds'].sort(key=lambda a: a['id'])
     db['state'] = state
     
     if 'eventStore' not in db:

@@ -63,6 +63,26 @@ def project(db, envelope, time_now_ms):
         
         return db
     
+    # Check if this is the first group
+    first_group_id = db['state'].get('first_group_id')
+    if first_group_id and group_id != first_group_id:
+        # Store event in eventStore even when blocked
+        if 'eventStore' not in db:
+            db['eventStore'] = []
+        db['eventStore'].append(envelope)
+        
+        # Block this invite as it's not for the first group
+        blocked_by_id = db['state'].get('blocked_by_id', {})
+        if 'invalid_group' not in blocked_by_id:
+            blocked_by_id['invalid_group'] = []
+        blocked_by_id['invalid_group'].append({
+            'event_id': invite_id,
+            'reason': f"Invites must be for the first group {first_group_id}, not {group_id}"
+        })
+        db['state']['blocked_by_id'] = blocked_by_id
+        
+        return db
+    
     # Check if group exists
     groups = db['state'].get('groups', [])
     group_exists = False
@@ -131,6 +151,8 @@ def project(db, envelope, time_now_ms):
     
     state = db['state']
     state['invites'].append(invite_data)
+    # Sort invites by ID for deterministic ordering
+    state['invites'].sort(key=lambda i: i['id'])
     db['state'] = state
     
     if 'eventStore' not in db:

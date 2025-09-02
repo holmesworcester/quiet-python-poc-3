@@ -52,7 +52,7 @@
         }
       },
       {
-        "description": "Message blocked when peer_id doesn't match user_id",
+        "description": "Message blocked when peer_id doesn't match user_id and peer is not linked",
         "given": {
           "db": {
             "state": {
@@ -73,7 +73,7 @@
               "peer_id": "peer_456",
               "user_id": "user_123",
               "content": "Hello",
-              "signature": "dummy_sig"
+              "signature": "dummy_sig_signed_by_peer_456"
             },
             "metadata": {}
           }
@@ -88,10 +88,140 @@
                 {"id": "channel_123", "network_id": "net_123"}
               ],
               "blocked_by_id": {
-                "peer_user_mismatch": [
+                "peer_456": [
                   {
                     "event_id": "msg_mismatch",
-                    "reason": "Message peer_id must match user_id"
+                    "reason": "Peer peer_456 not linked to user user_123"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "description": "Message from linked device is accepted",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "author_pub", "network_id": "net_123"}
+              ],
+              "channels": [
+                {"id": "channel_123", "network_id": "net_123"}
+              ],
+              "links": [
+                {
+                  "id": "link_123",
+                  "peer_id": "new_device_456",
+                  "user_id": "user_123",
+                  "link_invite_id": "invite_123"
+                }
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "message",
+              "id": "msg_from_linked",
+              "channel_id": "channel_123",
+              "author_id": "user_123",
+              "peer_id": "new_device_456",
+              "user_id": "user_123",
+              "content": "Hello from linked device",
+              "signature": "dummy_sig_signed_by_new_device_456"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "author_pub", "network_id": "net_123"}
+              ],
+              "channels": [
+                {"id": "channel_123", "network_id": "net_123"}
+              ],
+              "links": [
+                {
+                  "id": "link_123",
+                  "peer_id": "new_device_456",
+                  "user_id": "user_123",
+                  "link_invite_id": "invite_123"
+                }
+              ],
+              "messages": [
+                {
+                  "id": "msg_from_linked",
+                  "channel_id": "channel_123",
+                  "author_id": "user_123",
+                  "peer_id": "new_device_456",
+                  "user_id": "user_123",
+                  "content": "Hello from linked device"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "description": "Message blocked when signature doesn't match peer_id",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "author_pub", "network_id": "net_123"}
+              ],
+              "channels": [
+                {"id": "channel_123", "network_id": "net_123"}
+              ],
+              "links": [
+                {
+                  "id": "link_123",
+                  "peer_id": "new_device_456",
+                  "user_id": "user_123",
+                  "link_invite_id": "invite_123"
+                }
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "message",
+              "id": "msg_bad_sig",
+              "channel_id": "channel_123",
+              "author_id": "user_123",
+              "peer_id": "new_device_456",
+              "user_id": "user_123",
+              "content": "Bad signature",
+              "signature": "dummy_sig_signed_by_other_device"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "author_pub", "network_id": "net_123"}
+              ],
+              "channels": [
+                {"id": "channel_123", "network_id": "net_123"}
+              ],
+              "links": [
+                {
+                  "id": "link_123",
+                  "peer_id": "new_device_456",
+                  "user_id": "user_123",
+                  "link_invite_id": "invite_123"
+                }
+              ],
+              "blocked_by_id": {
+                "signature_mismatch": [
+                  {
+                    "event_id": "msg_bad_sig",
+                    "reason": "Signature does not match claimed peer new_device_456"
                   }
                 ]
               }
@@ -285,6 +415,8 @@
               "id": "msg_123",
               "channel_id": "channel_123",
               "author_id": "user_123",
+              "peer_id": "user_123",
+              "user_id": "user_123",
               "content": "Hello",
               "signature": "dummy_sig"
             },
@@ -345,6 +477,8 @@
               "id": "msg_789",
               "channel_id": "channel_123",
               "author_id": "new_user",
+              "peer_id": "new_user",
+              "user_id": "new_user",
               "content": "Message from new user",
               "signature": "valid_sig"
             },
@@ -393,6 +527,8 @@
               "id": "msg_blocked",
               "channel_id": "channel_123",
               "author_id": "user_456",
+              "peer_id": "user_456",
+              "user_id": "user_456",
               "content": "I'm not in this group!",
               "signature": "dummy_sig"
             },
@@ -447,6 +583,8 @@
               "id": "msg_from_creator",
               "channel_id": "channel_123",
               "author_id": "user_123",
+              "peer_id": "user_123",
+              "user_id": "user_123",
               "content": "Hello from group creator",
               "signature": "dummy_sig"
             },
@@ -503,6 +641,8 @@
               "id": "msg_from_member",
               "channel_id": "channel_123",
               "author_id": "user_456",
+              "peer_id": "user_456",
+              "user_id": "user_456",
               "content": "Hello from added member",
               "signature": "dummy_sig"
             },
@@ -531,6 +671,65 @@
                   "channel_id": "channel_123",
                   "author_id": "user_456",
                   "content": "Hello from added member"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "description": "Message from linked device is accepted",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "author_pub", "network_id": "net_123"}
+              ],
+              "channels": [
+                {"id": "channel_123", "network_id": "net_123"}
+              ],
+              "link_invites": [
+                {
+                  "id": "link_invite_789",
+                  "link_invite_pubkey": "link_pub_789", 
+                  "user_id": "user_123"
+                }
+              ],
+              "links": [
+                {
+                  "id": "link_789",
+                  "peer_id": "future_device_789",
+                  "user_id": "user_123",
+                  "link_invite_id": "link_invite_789"
+                }
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "message",
+              "id": "msg_from_future_linked",
+              "channel_id": "channel_123",
+              "author_id": "user_123",
+              "peer_id": "future_device_789",
+              "user_id": "user_123",
+              "content": "Message sent from linked device",
+              "signature": "dummy_sig_signed_by_future_device_789"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "messages": [
+                {
+                  "id": "msg_from_future_linked",
+                  "channel_id": "channel_123",
+                  "author_id": "user_123",
+                  "peer_id": "future_device_789",
+                  "user_id": "user_123",
+                  "content": "Message sent from linked device"
                 }
               ]
             }

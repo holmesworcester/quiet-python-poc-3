@@ -211,6 +211,57 @@
             }
           }
         }
+      },
+      {
+        "description": "Invite blocked when not for first group",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "inviter_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {"id": "group_first", "name": "First Group", "created_by": "user_123"},
+                {"id": "group_second", "name": "Second Group", "created_by": "user_123"}
+              ],
+              "first_group_id": "group_first"
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "invite",
+              "id": "invite_wrong_group",
+              "invite_pubkey": "invite_pub_wrong",
+              "network_id": "net_123",
+              "group_id": "group_second",
+              "created_by": "user_123",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "inviter_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {"id": "group_first", "name": "First Group", "created_by": "user_123"},
+                {"id": "group_second", "name": "Second Group", "created_by": "user_123"}
+              ],
+              "first_group_id": "group_first",
+              "blocked_by_id": {
+                "invalid_group": [
+                  {
+                    "event_id": "invite_wrong_group",
+                    "reason": "Invites must be for the first group group_first, not group_second"
+                  }
+                ]
+              }
+            }
+          }
+        }
       }
     ]
   },

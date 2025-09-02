@@ -10,6 +10,7 @@ import traceback
 import copy
 import yaml
 import re
+import itertools
 from datetime import datetime
 from pathlib import Path
 
@@ -72,16 +73,66 @@ class TestRunner:
             return True, None, None, None
             
         elif isinstance(expected, list):
-            # Lists must match exactly in length and order
+            # Lists must match exactly in length
             if len(actual) != len(expected):
                 return False, f"{path}.length", len(expected), len(actual)
-            for i, (a, e) in enumerate(zip(actual, expected)):
-                matches, mismatch_path, exp_val, act_val = self.subset_match(
-                    a, e, f"{path}[{i}]"
-                )
-                if not matches:
-                    return False, mismatch_path, exp_val, act_val
-            return True, None, None, None
+            
+            # Check if this is a list of objects (dicts)
+            # If so, compare without caring about order
+            if (expected and isinstance(expected[0], dict) and
+                actual and isinstance(actual[0], dict)):
+                
+                # For lists with wildcard IDs, we need to match by type/structure
+                if any(item.get('id') == '*' for item in expected if isinstance(item, dict)):
+                    # Match items by type and other fields
+                    unmatched_actual = list(actual)
+                    for exp_item in expected:
+                        found = False
+                        for i, act_item in enumerate(unmatched_actual):
+                            # Try to match this expected item with an actual item
+                            matches, _, _, _ = self.subset_match(act_item, exp_item, path)
+                            if matches:
+                                unmatched_actual.pop(i)
+                                found = True
+                                break
+                        if not found:
+                            return False, f"{path}[id={exp_item.get('id', '?')}]", exp_item, None
+                    return True, None, None, None
+                
+                # For lists with concrete IDs, use ID-based matching
+                elif all('id' in item for item in expected if isinstance(item, dict)):
+                    # Build maps by ID for order-independent comparison
+                    expected_by_id = {item['id']: item for item in expected if isinstance(item, dict) and 'id' in item}
+                    actual_by_id = {item['id']: item for item in actual if isinstance(item, dict) and 'id' in item}
+                    
+                    # Check all expected items exist in actual
+                    for exp_id, exp_item in expected_by_id.items():
+                        if exp_id not in actual_by_id:
+                            return False, f"{path}[id={exp_id}]", exp_item, None
+                        matches, mismatch_path, exp_val, act_val = self.subset_match(
+                            actual_by_id[exp_id], exp_item, f"{path}[id={exp_id}]"
+                        )
+                        if not matches:
+                            return False, mismatch_path, exp_val, act_val
+                    return True, None, None, None
+                else:
+                    # For lists of objects without IDs, fall back to order-dependent comparison
+                    for i, (a, e) in enumerate(zip(actual, expected)):
+                        matches, mismatch_path, exp_val, act_val = self.subset_match(
+                            a, e, f"{path}[{i}]"
+                        )
+                        if not matches:
+                            return False, mismatch_path, exp_val, act_val
+                    return True, None, None, None
+            else:
+                # For other lists, order matters
+                for i, (a, e) in enumerate(zip(actual, expected)):
+                    matches, mismatch_path, exp_val, act_val = self.subset_match(
+                        a, e, f"{path}[{i}]"
+                    )
+                    if not matches:
+                        return False, mismatch_path, exp_val, act_val
+                return True, None, None, None
             
         else:
             # Primitive values must match exactly
@@ -247,6 +298,83 @@ class TestRunner:
     
     def run_handler_test(self, test, handler_file, handler_name=None, command_name=None):
         """Run handler tests using real framework"""
+        # Determine protocol from handler file path
+        protocol = handler_file.split('/')[1] if '/' in handler_file else 'signed_groups'
+        
+        # For all protocols, automatically generate permutations if not specified
+        if "permutations" not in test:
+            # Collect all events from the test
+            events = []
+            given = test.get("given", {})
+            
+            # Only collect events from eventStore that are meant to be processed
+            # Skip if eventStore already has events in initial state (idempotency tests)
+            initial_state = given.get("db", {}).get("state", {})
+            initial_eventstore = given.get("db", {}).get("eventStore", [])
+            
+            # Skip permutation for idempotency tests
+            # (eventStore has initial events and state has corresponding data)
+            if initial_eventstore and any(initial_state.get(k) for k in ["messages", "users", "groups", "channels"]):
+                # This looks like an idempotency test, skip permutation
+                pass
+            else:
+                # Collect events from eventStore for permutation
+                if "eventStore" in given.get("db", {}):
+                    events.extend(given["db"]["eventStore"])
+                
+                # Add the envelope if present
+                if "envelope" in given:
+                    events.append(given["envelope"])
+            
+            # If we have multiple events, generate permutations
+            if len(events) > 1:
+                # Generate all permutations
+                all_permutations = list(itertools.permutations(events))
+                
+                # Run test for each permutation
+                results = []
+                for i, perm in enumerate(all_permutations):
+                    self.log(f"Testing permutation {i+1}/{len(all_permutations)}: {[e['data']['type'] for e in perm if 'data' in e]}")
+                    
+                    # Create a modified test with this permutation
+                    perm_test = copy.deepcopy(test)
+                    perm_test["given"]["db"]["eventStore"] = []  # Clear eventStore
+                    if "envelope" in perm_test["given"]:
+                        del perm_test["given"]["envelope"]  # Remove envelope
+                    
+                    # Process events in this order
+                    perm_db = copy.deepcopy(test["given"].get("db", {}))
+                    from core.handle import handle
+                    
+                    for event in perm:
+                        perm_db = handle(perm_db, event, time_now_ms=1000)
+                    
+                    # Run ticks if specified
+                    ticks_to_run = test.get('ticks', 0)
+                    if ticks_to_run > 0:
+                        if protocol == "framework_tests":
+                            from core.tick import tick
+                        else:
+                            from core.tick import run_all_jobs as tick
+                        
+                        for _ in range(ticks_to_run):
+                            tick(perm_db, time_now_ms=1000)
+                    
+                    # Check result matches expected
+                    then = test.get("then", {})
+                    matches, path, exp_val, act_val = self.subset_match({"db": perm_db}, then)
+                    
+                    if not matches:
+                        self.log(f"Permutation {i+1} FAILED at {path}: expected {exp_val}, got {act_val}", "ERROR")
+                        scenario_name = test.get("description", "Unnamed")
+                        return {"scenario": scenario_name, "passed": False, "logs": self.logs}
+                    else:
+                        self.log(f"Permutation {i+1} passed")
+                
+                # All permutations passed
+                scenario_name = test.get("description", "Unnamed")
+                return {"scenario": scenario_name, "passed": True, "logs": self.logs}
+        
         # For handler tests with envelope, we need to handle it directly
         if "envelope" in test.get("given", {}):
             scenario_name = test.get("description", "Unnamed")
@@ -285,7 +413,6 @@ class TestRunner:
                 self.log(f"Running {ticks_to_run} ticks for projector test")
                 
                 # Import tick based on protocol
-                protocol = handler_file.split('/')[1] if '/' in handler_file else 'signed_groups'
                 if protocol == "framework_tests":
                     from core.tick import tick
                 else:

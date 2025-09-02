@@ -26,17 +26,12 @@ def execute(params, db):
     network_id_data = f"{name}:{identity_id}".encode()
     network_id = hashlib.sha256(network_id_data).hexdigest()[:16]
     
-    # Create dummy signature
-    signature_data = f"network:{network_id}:{identity_id}"
-    signature = "dummy_sig_" + hashlib.sha256(signature_data.encode()).hexdigest()[:8]
-    
-    # Create network event
+    # Create network event (no signature needed - bootstrap event)
     network_event = {
         'type': 'network',
         'id': network_id,
         'name': name,
-        'creator_pubkey': identity_id,
-        'signature': signature
+        'creator_pubkey': identity_id
     }
     
     # Create user event for creator (automatically valid as network creator)

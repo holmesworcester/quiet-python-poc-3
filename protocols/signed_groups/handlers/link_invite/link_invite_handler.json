@@ -1,0 +1,118 @@
+{
+  "type": "link_invite",
+  "projector": {
+    "description": "Projects link-invite events for multi-device support",
+    "func": "projector.project",
+    "tests": [
+      {
+        "description": "Valid link-invite is accepted",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "user_pub", "network_id": "net_123"}
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "link_invite",
+              "id": "link_invite_123",
+              "link_invite_pubkey": "link_pub_123",
+              "user_id": "user_123",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "user_pub", "network_id": "net_123"}
+              ],
+              "link_invites": [
+                {
+                  "id": "link_invite_123",
+                  "link_invite_pubkey": "link_pub_123",
+                  "user_id": "user_123"
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "description": "Link-invite blocked when user doesn't exist",
+        "given": {
+          "db": {
+            "state": {}
+          },
+          "envelope": {
+            "data": {
+              "type": "link_invite",
+              "id": "link_invite_456",
+              "link_invite_pubkey": "link_pub_456",
+              "user_id": "unknown_user",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "blocked_by_id": {
+                "unknown_user": [
+                  {
+                    "event_id": "link_invite_456",
+                    "reason": "User unknown_user not found"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        "description": "Link-invite blocked when signature is from non-user",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "user_pub", "network_id": "net_123"}
+              ]
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "link_invite",
+              "id": "link_invite_fake",
+              "link_invite_pubkey": "link_pub_fake",
+              "user_id": "user_123",
+              "signature": "dummy_sig_from_unknown"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "user_pub", "network_id": "net_123"}
+              ],
+              "blocked_by_id": {
+                "invalid_signature": [
+                  {
+                    "event_id": "link_invite_fake",
+                    "reason": "Event signed by unknown user"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+}

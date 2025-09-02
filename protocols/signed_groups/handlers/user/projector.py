@@ -81,6 +81,26 @@ def project(db, envelope, time_now_ms):
             db['state']['blocked_by_id'] = blocked_by_id
             
             return db
+        
+        # Check if user is joining the first group
+        first_group_id = db['state'].get('first_group_id')
+        if first_group_id and group_id != first_group_id:
+            # Store event in eventStore even when blocked
+            if 'eventStore' not in db:
+                db['eventStore'] = []
+            db['eventStore'].append(envelope)
+            
+            # Block this user as they're not joining the first group
+            blocked_by_id = db['state'].get('blocked_by_id', {})
+            if 'invalid_group' not in blocked_by_id:
+                blocked_by_id['invalid_group'] = []
+            blocked_by_id['invalid_group'].append({
+                'event_id': user_id,
+                'reason': f"Users must join the first group {first_group_id}, not {group_id}"
+            })
+            db['state']['blocked_by_id'] = blocked_by_id
+            
+            return db
         # Check if invite exists
         invites = db['state'].get('invites', [])
         invite_found = False

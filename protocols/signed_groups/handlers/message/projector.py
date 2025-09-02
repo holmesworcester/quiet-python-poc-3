@@ -49,28 +49,62 @@ def project(db, envelope, time_now_ms):
         
         return db
     
-    # Check if peer_id matches user_id (per docs: peer_id must match user_id)
-    if peer_id != user_id:
+    # Check if peer_id is valid - it must either match user_id or be a linked device
+    peer_valid = False
+    
+    if peer_id == user_id:
+        # Direct match - user posting from their main device
+        peer_valid = True
+    else:
+        # Check if peer is linked to the user
+        links = db['state'].get('links', [])
+        for link in links:
+            if link.get('peer_id') == peer_id and link.get('user_id') == user_id:
+                peer_valid = True
+                break
+    
+    if not peer_valid:
         # Store event in eventStore even when blocked
         if 'eventStore' not in db:
             db['eventStore'] = []
         db['eventStore'].append(envelope)
         
-        # Block this message due to peer/user mismatch
+        # Block this message - peer not linked to user
         blocked_by_id = db['state'].get('blocked_by_id', {})
-        if 'peer_user_mismatch' not in blocked_by_id:
-            blocked_by_id['peer_user_mismatch'] = []
-        blocked_by_id['peer_user_mismatch'].append({
+        # Use peer_id as the blocker so it can be unblocked when link is created
+        if peer_id not in blocked_by_id:
+            blocked_by_id[peer_id] = []
+        blocked_by_id[peer_id].append({
             'event_id': message_id,
-            'reason': "Message peer_id must match user_id"
+            'reason': f"Peer {peer_id} not linked to user {user_id}"
         })
         db['state']['blocked_by_id'] = blocked_by_id
         
         return db
     
-    # Check if signature is from a known user
-    # In dummy mode, we check if signature contains reference to unknown pubkey
-    if signature.startswith("dummy_sig_from_unknown"):
+    # Verify signature matches peer_id
+    # In dummy mode, we check if signature indicates it was signed by the peer
+    if signature.startswith("dummy_sig_signed_by_"):
+        # Extract who signed it from the dummy signature
+        signer_id = signature.replace("dummy_sig_signed_by_", "")
+        if signer_id != peer_id:
+            # Store event in eventStore even when blocked
+            if 'eventStore' not in db:
+                db['eventStore'] = []
+            db['eventStore'].append(envelope)
+            
+            # Block this message due to signature mismatch
+            blocked_by_id = db['state'].get('blocked_by_id', {})
+            if 'signature_mismatch' not in blocked_by_id:
+                blocked_by_id['signature_mismatch'] = []
+            blocked_by_id['signature_mismatch'].append({
+                'event_id': message_id,
+                'reason': f"Signature does not match claimed peer {peer_id}"
+            })
+            db['state']['blocked_by_id'] = blocked_by_id
+            
+            return db
+    elif signature.startswith("dummy_sig_from_unknown"):
         # Store event in eventStore even when blocked
         if 'eventStore' not in db:
             db['eventStore'] = []

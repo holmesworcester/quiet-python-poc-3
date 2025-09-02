@@ -224,6 +224,58 @@
         }
       },
       {
+        "description": "User blocked when joining wrong first group",
+        "given": {
+          "db": {
+            "state": {
+              "invites": [
+                {"id": "invite_123", "invite_pubkey": "invite_pub_123", "group_id": "group_second"}
+              ],
+              "groups": [
+                {"id": "group_first", "name": "First Group"},
+                {"id": "group_second", "name": "Second Group"}
+              ],
+              "first_group_id": "group_first"
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "user",
+              "id": "user_wrong_group",
+              "network_id": "net_123",
+              "group_id": "group_second",
+              "pubkey": "wrong_user_pub",
+              "name": "Wrong Group User",
+              "invite_id": "invite_123",
+              "signature": "dummy_sig"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "invites": [
+                {"id": "invite_123", "invite_pubkey": "invite_pub_123", "group_id": "group_second"}
+              ],
+              "groups": [
+                {"id": "group_first", "name": "First Group"},
+                {"id": "group_second", "name": "Second Group"}
+              ],
+              "first_group_id": "group_first",
+              "blocked_by_id": {
+                "invalid_group": [
+                  {
+                    "event_id": "user_wrong_group",
+                    "reason": "Users must join the first group group_first, not group_second"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
         "description": "Idempotency - processing same user event twice doesn't duplicate",
         "given": {
           "db": {
@@ -305,6 +357,8 @@
                   "id": "msg_waiting",
                   "channel_id": "channel_123",
                   "author_id": "user_456",
+                  "peer_id": "user_456",
+                  "user_id": "user_456",
                   "content": "Hello",
                   "signature": "dummy_sig"
                 },
@@ -361,6 +415,7 @@
                   "id": "invite_456",
                   "invite_pubkey": "inv_pub",
                   "network_id": "net_123",
+                  "group_id": "group_123",
                   "created_by": "user_creator",
                   "signature": "dummy_sig"
                 },
@@ -369,6 +424,9 @@
             ],
             "state": {
               "network": {"id": "net_123", "creator_pubkey": "creator_pub"},
+              "groups": [
+                {"id": "group_123", "name": "First Group"}
+              ],
               "blocked_by_id": {
                 "user_creator": [
                   {"event_id": "invite_456", "reason": "Creator user user_creator not found"}
@@ -415,6 +473,8 @@
                   "id": "msg_1",
                   "channel_id": "channel_123",
                   "author_id": "user_456",
+                  "peer_id": "user_456",
+                  "user_id": "user_456",
                   "content": "First message",
                   "signature": "dummy_sig"
                 },
@@ -426,6 +486,8 @@
                   "id": "msg_2",
                   "channel_id": "channel_123",
                   "author_id": "user_456",
+                  "peer_id": "user_456",
+                  "user_id": "user_456",
                   "content": "Second message",
                   "signature": "dummy_sig"
                 },
@@ -485,6 +547,8 @@
                   "id": "msg_reply",
                   "channel_id": "channel_123",
                   "author_id": "user_789",
+                  "peer_id": "user_789",
+                  "user_id": "user_789",
                   "content": "Reply to msg_1",
                   "reply_to": "msg_1",
                   "signature": "dummy_sig"
@@ -497,6 +561,8 @@
                   "id": "msg_1",
                   "channel_id": "channel_123",
                   "author_id": "user_456",
+                  "peer_id": "user_456",
+                  "user_id": "user_456",
                   "content": "Original message",
                   "signature": "dummy_sig"
                 },
@@ -539,8 +605,8 @@
             "state": {
               "blocked_by_id": {},
               "users": [
-                {"id": "user_789"},
-                {"id": "user_456"}
+                {"id": "user_456"},
+                {"id": "user_789"}
               ],
               "messages": [
                 {"id": "msg_1"},
@@ -562,6 +628,8 @@
                   "id": "msg_456",
                   "channel_id": "channel_123",
                   "author_id": "user_456",
+                  "peer_id": "user_456",
+                  "user_id": "user_456",
                   "content": "From user 456",
                   "signature": "dummy_sig"
                 },
@@ -573,6 +641,8 @@
                   "id": "msg_789",
                   "channel_id": "channel_123",
                   "author_id": "user_789",
+                  "peer_id": "user_789",
+                  "user_id": "user_789",
                   "content": "From user 789",
                   "signature": "dummy_sig"
                 },

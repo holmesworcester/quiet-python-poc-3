@@ -37,7 +37,8 @@
                   "name": "Developers",
                   "created_by": "user_123"
                 }
-              ]
+              ],
+              "first_group_id": "group_123"
             }
           }
         }
@@ -181,6 +182,58 @@
                 "metadata": {}
               }
             ]
+          }
+        }
+      },
+      {
+        "description": "Second group doesn't change first_group_id",
+        "given": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {
+                  "id": "group_first",
+                  "name": "First Group",
+                  "created_by": "user_123"
+                }
+              ],
+              "first_group_id": "group_first"
+            }
+          },
+          "envelope": {
+            "data": {
+              "type": "group",
+              "id": "group_second",
+              "name": "Second Group",
+              "user_id": "user_123",
+              "signature": "dummy_sig_signed_by_user_123"
+            },
+            "metadata": {}
+          }
+        },
+        "then": {
+          "db": {
+            "state": {
+              "users": [
+                {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"}
+              ],
+              "groups": [
+                {
+                  "id": "group_first",
+                  "name": "First Group",
+                  "created_by": "user_123"
+                },
+                {
+                  "id": "group_second",
+                  "name": "Second Group",
+                  "created_by": "user_123"
+                }
+              ],
+              "first_group_id": "group_first"
+            }
           }
         }
       },

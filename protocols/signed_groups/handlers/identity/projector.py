@@ -32,6 +32,8 @@ def project(db, envelope, time_now_ms):
     
     state = db['state']
     state['identities'].append(identity_data)
+    # Sort identities by pubkey for deterministic ordering
+    state['identities'].sort(key=lambda i: i['pubkey'])
     db['state'] = state
     
     if 'eventStore' not in db:

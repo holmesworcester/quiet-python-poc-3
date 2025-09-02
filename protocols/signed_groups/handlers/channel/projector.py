@@ -88,6 +88,8 @@ def project(db, envelope, time_now_ms):
     
     state = db['state']
     state['channels'].append(channel_data)
+    # Sort channels by ID for deterministic ordering
+    state['channels'].sort(key=lambda c: c['id'])
     db['state'] = state
     
     if 'eventStore' not in db:
