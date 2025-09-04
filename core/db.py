@@ -32,8 +32,20 @@ class PersistentDict(MutableMapping):
         self.conn = sqlite3.connect(db_path, timeout=10.0)
         self.conn.row_factory = sqlite3.Row
         
-        # Favor safer reads
-        self.conn.execute("PRAGMA read_uncommitted = 0")
+        # SQLite pragmas for concurrency + durability
+        try:
+            # WAL allows readers during writes and improves concurrency
+            self.conn.execute("PRAGMA journal_mode = WAL")
+            # NORMAL is a good balance for local apps
+            self.conn.execute("PRAGMA synchronous = NORMAL")
+            # Enforce transactional safeguards
+            self.conn.execute("PRAGMA foreign_keys = ON")
+            # Default busy timeout; can be overridden per-operation
+            self.conn.execute("PRAGMA busy_timeout = 30000")
+            # Favor safer reads
+            self.conn.execute("PRAGMA read_uncommitted = 0")
+        except sqlite3.OperationalError:
+            pass
         
         # Transaction state
         self._in_transaction = False
@@ -90,17 +102,48 @@ class PersistentDict(MutableMapping):
                     continue
                 elif in_create_table and (');' in stripped or stripped == ')'):  
                     in_create_table = False
-                    if cleaned_lines and cleaned_lines[-1].rstrip().endswith(','):
-                        cleaned_lines[-1] = cleaned_lines[-1].rstrip()[:-1]
+                    if cleaned_lines:
+                        prev = cleaned_lines[-1]
+                        try:
+                            comment_idx = prev.find('--')
+                            if comment_idx != -1:
+                                code_part = prev[:comment_idx].rstrip()
+                                comment_part = prev[comment_idx:]
+                            else:
+                                code_part = prev.rstrip()
+                                comment_part = ''
+                            if code_part.endswith(','):
+                                code_part = code_part[:-1]
+                            # rebuild, keep a space before comment if needed
+                            new_prev = code_part + ((' ' + comment_part) if comment_part else '')
+                            cleaned_lines[-1] = new_prev
+                        except Exception:
+                            # fallback to previous behavior
+                            if cleaned_lines[-1].rstrip().endswith(','):
+                                cleaned_lines[-1] = cleaned_lines[-1].rstrip()[:-1]
                     cleaned_lines.append(line)
                 else:
                     cleaned_lines.append(line)
             
             cleaned_sql = '\n'.join(cleaned_lines)
+            # Extra safety: remove any stray trailing commas before closing parens in CREATE TABLE blocks
+            try:
+                import re as _re
+                cleaned_sql = _re.sub(r",\s*\)", ")", cleaned_sql)
+            except Exception:
+                pass
             
             # Execute the cleaned schema
             cursor = self.conn.cursor()
-            cursor.executescript(cleaned_sql)
+            try:
+                cursor.executescript(cleaned_sql)
+            except sqlite3.OperationalError as e:
+                try:
+                    with open('.last_cleaned_schema.sql', 'w') as _f:
+                        _f.write(cleaned_sql)
+                except Exception:
+                    pass
+                raise
             
             # Create indexes separately
             for idx_sql in indexes_to_create:
@@ -232,7 +275,8 @@ class PersistentDict(MutableMapping):
             raise RuntimeError("Transaction already in progress")
         self._in_transaction = True
         self._transaction_cache = {}
-        self.conn.execute("BEGIN EXCLUSIVE")  # Lock database for writes
+        # Use IMMEDIATE to acquire a reserved lock for writes while allowing readers
+        self.conn.execute("BEGIN IMMEDIATE")
     
     def commit(self):
         """Commit staged changes and clear transaction state."""
@@ -290,6 +334,16 @@ class PersistentDict(MutableMapping):
                     INSERT INTO _list_store (list_name, item_order, data)
                     VALUES (?, ?, ?)
                 """, (key, idx, json.dumps(item)))
+            
+            # Persist empty lists in _kv_store so they survive reloads
+            if len(value) == 0:
+                cursor.execute(
+                    "INSERT OR REPLACE INTO _kv_store (key, value) VALUES (?, ?)",
+                    (key, json.dumps([]))
+                )
+            else:
+                # Remove any stale empty marker when list has items
+                cursor.execute("DELETE FROM _kv_store WHERE key = ?", (key,))
             
             # Mirror to _event_store for compatibility
             if key == 'eventStore':

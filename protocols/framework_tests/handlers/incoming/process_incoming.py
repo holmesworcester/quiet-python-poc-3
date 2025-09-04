@@ -7,29 +7,67 @@ from core.handle import handle
 def execute(input_data, db):
     """
     Process incoming message queue by decrypting and routing to handlers.
-    This replaces the greedy_decrypt functionality as a handler job.
+    SQL-first when tables are present; falls back to dict-list storage.
     """
-    # Get incoming blobs
-    incoming_blobs = db.get('incoming', [])[:]
-    db['incoming'] = []
-    
+    time_now_ms = input_data.get("time_now_ms")
+
+    # SQL-only: drain the incoming table
+    cur = db.conn.cursor()
+    rows = cur.execute(
+        "SELECT id, data, origin, received_at, envelope FROM incoming"
+    ).fetchall()
+    ids = [r[0] for r in rows]
+    if ids:
+        cur.execute(
+            f"DELETE FROM incoming WHERE id IN ({','.join(['?']*len(ids))})",
+            ids,
+        )
+    incoming_blobs = []
+    for r in rows:
+        try:
+            datum = r[1]
+            incoming_blobs.append(
+                {
+                    "data": datum,
+                    "origin": r[2],
+                    "received_at": r[3],
+                    "envelope": bool(r[4]),
+                }
+            )
+        except Exception:
+            continue
+
     # Process each blob
     for i, blob in enumerate(incoming_blobs):
         if os.environ.get("TEST_MODE"):
             print(f"[process_incoming] Processing blob {i+1}/{len(incoming_blobs)}")
-        
-        envelope = greedy_decrypt_blob(blob, db)
+
+        # Support already-decrypted envelopes when blob['envelope'] is True
+        # In SQL path, metadata may not be available as a separate column.
+        if blob.get('envelope') is True and isinstance(blob.get('data'), (dict, str)):
+            env = None
+            try:
+                env = blob['data'] if isinstance(blob['data'], dict) else __json_load(blob['data'])
+            except Exception:
+                env = None
+            if isinstance(env, dict) and 'data' in env:
+                envelope = env
+            else:
+                envelope = greedy_decrypt_blob(blob, db)
+        else:
+            envelope = greedy_decrypt_blob(blob, db)
+
         if envelope is None:
             if os.environ.get("TEST_MODE"):
                 print(f"[process_incoming] Blob {i+1} dropped (decryption failed)")
             continue  # Dropped
-        
+
         if os.environ.get("TEST_MODE"):
             print(f"[process_incoming] Blob {i+1} decrypted successfully, handling envelope")
-        
+
         # Handle the envelope (auto_transaction=False since we're already in a command transaction)
-        db = handle(db, envelope, input_data.get("time_now_ms"), auto_transaction=False)
-    
+        db = handle(db, envelope, time_now_ms, auto_transaction=False)
+
     return {"db": db}
 
 
@@ -76,7 +114,7 @@ def greedy_decrypt_blob(raw_blob, db):
         outer_nonce = raw_data[64:112]
         outer_cipher = raw_data[112:]
     
-    outer_key = db.get("state", {}).get("key_map", {}).get(outer_hash)
+    outer_key = _lookup_key(db, outer_hash)
     
     if not outer_key:
         if os.environ.get("TEST_MODE"):
@@ -121,7 +159,7 @@ def greedy_decrypt_blob(raw_blob, db):
     
     # Inner layer
     inner_hash = partial.get("innerHash", outer_hash)
-    inner_key = db.get("state", {}).get("key_map", {}).get(inner_hash)
+    inner_key = _lookup_key(db, inner_hash)
     
     if not inner_key:
         envelope["metadata"]["error"] = f"Missing inner key: {inner_hash}"
@@ -214,3 +252,18 @@ def create_encrypted_blob(inner_data, inner_key, outer_key):
     wire_data = outer_key_hash + outer_encrypted["nonce"] + outer_encrypted["ciphertext"]
     
     return wire_data
+
+
+def __json_load(s):
+    import json
+    return json.loads(s)
+
+
+def _lookup_key(db, key_hash):
+    """Return key value for a given hash using SQL first, then dict fallback."""
+    cur = db.conn.cursor()
+    row = cur.execute(
+        "SELECT key_value FROM key_map WHERE key_hash = ? LIMIT 1",
+        (key_hash,),
+    ).fetchone()
+    return row[0] if row else None

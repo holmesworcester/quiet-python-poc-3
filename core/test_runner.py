@@ -8,16 +8,60 @@ import sys
 import os
 import traceback
 import copy
-import yaml
+try:
+    import yaml
+except Exception:
+    yaml = None
 import re
 import itertools
 from datetime import datetime
 from pathlib import Path
 
+# Ensure repository root is on sys.path for 'core' imports when running as a script
+try:
+    repo_root = Path(__file__).resolve().parent.parent
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+except Exception:
+    pass
+
 class TestRunner:
     def __init__(self):
         self.verbose = False
         self.logs = []
+        self._temp_db_files = set()  # Track all temp DB files created
+        
+    def _track_db_file(self, db_path):
+        """Track a database file for later cleanup"""
+        if db_path and db_path != ':memory:' and not db_path.startswith(':'):
+            self._temp_db_files.add(db_path)
+    
+    def _cleanup_db_files(self):
+        """Clean up all tracked database files"""
+        if self._temp_db_files:
+            print(f"\nCleaning up {len(self._temp_db_files)} test database files...")
+        for db_path in list(self._temp_db_files):
+            # Clean up the main database file
+            if os.path.exists(db_path):
+                try:
+                    os.remove(db_path)
+                    if self.verbose:
+                        print(f"  Removed: {db_path}")
+                except Exception as e:
+                    print(f"  Failed to remove {db_path}: {e}")
+            
+            # Also clean up SQLite's auxiliary files
+            for suffix in ['-wal', '-shm']:
+                aux_path = db_path + suffix
+                if os.path.exists(aux_path):
+                    try:
+                        os.remove(aux_path)
+                        if self.verbose:
+                            print(f"  Removed: {aux_path}")
+                    except Exception as e:
+                        if self.verbose:
+                            print(f"  Failed to remove {aux_path}: {e}")
+        self._temp_db_files.clear()
         
     def log(self, message, level="INFO"):
         timestamp = datetime.now().isoformat()
@@ -144,7 +188,7 @@ class TestRunner:
         """Run a single test scenario using real framework"""
         scenario_name = scenario.get("name", scenario.get("description", "Unnamed"))
         self.log(f"Running scenario: {scenario_name}")
-        
+
         try:
             given = scenario.get("given", {})
             then = scenario.get("then", {})
@@ -164,21 +208,28 @@ class TestRunner:
             import uuid
             test_id = str(uuid.uuid4())[:8]
             base_test_db = os.environ.get('TEST_DB_PATH', ':memory:')
+            # If this scenario requires concurrency, force a file-backed DB
+            requires_file_db = bool(given.get("concurrent"))
             if base_test_db != ':memory:':
                 # Make it unique for this test
                 test_db_path = base_test_db.replace('.db', f'_{test_id}.db')
             else:
                 test_db_path = base_test_db
+                if requires_file_db:
+                    # Use a unique temporary file for sharing between threads
+                    test_db_path = f".test_concurrent_{test_id}.db"
             
             db = create_db(db_path=test_db_path)
             
-            # Store the path for cleanup
-            self._current_test_db = test_db_path
+            # Track the database file for cleanup
+            self._track_db_file(test_db_path)
             
-            # Initialize db with given data
-            given_db = given.get("db", {"eventStore": {}, "state": {}})
-            for key, value in given_db.items():
-                db[key] = value
+            # Seed SQL generically from given db.tables/state
+            given_db = given.get("db", {"state": {}})
+            try:
+                self._seed_sql_generic(db, given_db)
+            except Exception:
+                pass
             
             # Tests should provide encrypted data directly, not use setup generation
             
@@ -189,23 +240,12 @@ class TestRunner:
                     result = self.execute_command(cmd, db)
                     command_results.append(result)
                     # Note: events are now projected automatically by run_command
+
+            # Execute concurrent scenario if specified
+            if "concurrent" in given:
+                self._run_concurrent(given["concurrent"], test_db_path)
             
-            # Handle special test cases
-            if given.get("permute") and "events_to_permute" in db:
-                # For permutation test, add events directly to state
-                # This is a special test case that bypasses normal processing
-                events = db.pop("events_to_permute")
-                if "state" not in db:
-                    db["state"] = {}
-                if "messages" not in db["state"]:
-                    db["state"]["messages"] = []
-                
-                # Add to eventStore and state
-                if "eventStore" not in db:
-                    db["eventStore"] = []
-                for event in events:
-                    db["eventStore"].append(event)
-                    db["state"]["messages"].append(event)
+            # Legacy permutation shortcuts removed – tests should drive via SQL/stateful operations
             
             # Run ticks if specified or if this is a tick.json test
             ticks_to_run = scenario.get('ticks', 0)
@@ -221,31 +261,34 @@ class TestRunner:
             
             # Build result for comparison
             # Convert persistent db to dict for comparison
-            db_dict = db.to_dict() if hasattr(db, 'to_dict') else db
-            result = {"db": db_dict}
+            # Reload DB from disk in case concurrent workers used separate connections
+            if hasattr(db, 'close'):
+                db.close()
+            db_fresh = create_db(db_path=test_db_path)
+            result = {}
+
+            # Attach generic SQL snapshot
+            try:
+                snap = self._dump_sql_generic(db_fresh)
+                result['snapshot'] = snap
+                if isinstance(snap, dict) and 'tables' in snap:
+                    result['tables'] = snap['tables']
+            except Exception:
+                pass
+            # Do not attach dict-style db view; SQL tables are the source of truth
             if command_results:
                 result["commandResults"] = command_results
-                # Also check if command results contain db updates
-                for cmd_result in command_results:
-                    if isinstance(cmd_result, dict) and 'db' in cmd_result:
-                        # Replace with dict representation
-                        if hasattr(cmd_result['db'], 'to_dict'):
-                            cmd_result['db'] = cmd_result['db'].to_dict()
+                # No dict-db back-compat normalization here
             
             # Close the database connection
             if hasattr(db, 'close'):
                 db.close()
             
-            # Clean up test database file
-            if hasattr(self, '_current_test_db') and self._current_test_db != ':memory:':
-                if os.path.exists(self._current_test_db):
-                    try:
-                        os.remove(self._current_test_db)
-                    except:
-                        pass
+            # Cleanup is now handled by _cleanup_db_files() at the end
             
             # Filter out description from then before matching
             then_filtered = {k: v for k, v in then.items() if k != "description"}
+            # No protocol-specific filtering here; protocols define snapshots
             
             matches, path, exp_val, act_val = self.subset_match(result, then_filtered)
             if matches:
@@ -253,7 +296,7 @@ class TestRunner:
             else:
                 self.log(f"Mismatch at {path}: expected {exp_val}, got {act_val}", "ERROR")
                 return {"scenario": scenario_name, "passed": False, "logs": self.logs}
-                
+
         except Exception as e:
             self.log(f"Scenario crashed: {str(e)}", "ERROR")
             self.log(traceback.format_exc(), "ERROR")
@@ -263,6 +306,241 @@ class TestRunner:
                 "logs": self.logs,
                 "error": str(e)
             }
+
+    def _seed_sql_generic(self, db, given_db):
+        if not hasattr(db, 'conn') or db.conn is None:
+            return
+        tables = {}
+        src = given_db or {}
+        # Only seed from 'tables' — SQL is the source of truth now
+        if isinstance(src.get('tables'), dict):
+            tables.update(src['tables'])
+        if not tables:
+            return
+        conn = db.conn
+        cur = conn.cursor()
+        try:
+            conn.execute('BEGIN IMMEDIATE')
+        except Exception:
+            pass
+        def _table_info(tname):
+            """Return list of (name, type, notnull, pk, dflt_value)."""
+            cols = []
+            try:
+                for r in cur.execute(f"PRAGMA table_info({tname})").fetchall():
+                    # r: cid, name, type, notnull, dflt_value, pk
+                    cols.append((r[1], (r[2] or '').upper(), int(r[3] or 0), int(r[5] or 0), r[4]))
+            except Exception:
+                pass
+            return cols
+        for tname, rows in tables.items():
+            try:
+                cur.execute(f"DELETE FROM {tname}")
+            except Exception:
+                continue
+            info = _table_info(tname)
+            if not info:
+                continue
+            col_names = [c[0] for c in info]
+            for row in (rows or []):
+                if not isinstance(row, dict):
+                    continue
+                # Build a values dict from available keys
+                vals = {k: row.get(k) for k in row.keys() if k in col_names}
+                # Ensure unique event_id where required
+                try:
+                    if 'event_id' in col_names and ('event_id' not in vals or not vals.get('event_id')):
+                        import uuid as _uuid
+                        vals['event_id'] = f"seeded-{_uuid.uuid4()}"
+                except Exception:
+                    pass
+                # JSON-encode common JSON columns when seeding
+                try:
+                    import json as _json
+                    for jk in ['data', 'metadata', 'event_data']:
+                        if jk in vals and not (isinstance(vals[jk], (str, bytes)) or vals[jk] is None):
+                            vals[jk] = _json.dumps(vals[jk])
+                except Exception:
+                    pass
+                # Fill required not-null columns with sensible defaults
+                for name, ctype, notnull, pk, dflt in info:
+                    if pk == 1:
+                        continue
+                    if name in vals:
+                        continue
+                    if notnull:
+                        if dflt is not None:
+                            vals[name] = dflt
+                        else:
+                            lname = name.lower()
+                            if 'sig' == lname:
+                                vals[name] = ''
+                            elif 'int' in ctype or 'INTEGER' in ctype:
+                                vals[name] = 0
+                            else:
+                                vals[name] = ''
+                ins_cols = list(vals.keys())
+                placeholders = ','.join(['?'] * len(ins_cols))
+                insert_sql = f"INSERT INTO {tname}({','.join(ins_cols)}) VALUES({placeholders})"
+                values = [vals[k] for k in ins_cols]
+                try:
+                    cur.execute(insert_sql, values)
+                except Exception:
+                    pass
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
+    def _dump_sql_generic(self, db):
+        if not hasattr(db, 'conn') or db.conn is None:
+            return { 'tables': {} }
+        conn = db.conn
+        cur = conn.cursor()
+        try:
+            table_names = [r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+        except Exception:
+            table_names = []
+        def _skip(name):
+            return (
+                not name or name.startswith('sqlite_') or name in ['_kv_store','_list_store','_event_store']
+            )
+        out = {}
+        # Preload column types for boolean normalization
+        col_types = {}
+        for tname in table_names:
+            if _skip(tname):
+                continue
+            types = {}
+            try:
+                for r in cur.execute(f"PRAGMA table_info({tname})").fetchall():
+                    # r: cid, name, type, notnull, dflt_value, pk
+                    types[r[1]] = (r[2] or '').upper()
+            except Exception:
+                pass
+            col_types[tname] = types
+        for tname in sorted(n for n in table_names if not _skip(n)):
+            try:
+                order_col = None
+                try:
+                    for r in cur.execute(f"PRAGMA table_info({tname})").fetchall():
+                        if r[5] == 1:
+                            order_col = r[1]
+                            break
+                except Exception:
+                    pass
+                sql = f"SELECT * FROM {tname}"
+                if order_col:
+                    sql += f" ORDER BY {order_col}"
+                rows = cur.execute(sql).fetchall()
+                cols = [d[0] for d in cur.description]
+                items = []
+                for r in rows:
+                    obj = { cols[i]: r[i] for i in range(len(cols)) }
+                    # Try JSON decode for common columns
+                    for key in ['data','metadata','event_data']:
+                        v = obj.get(key)
+                        if isinstance(v, str):
+                            try:
+                                import json
+                                obj[key] = json.loads(v)
+                            except Exception:
+                                pass
+                    # Normalize event_store rows to have 'data' instead of 'event_data'
+                    if tname == 'event_store' and 'event_data' in obj and 'data' not in obj:
+                        obj['data'] = obj.pop('event_data')
+                    # Boolean normalization based on declared type
+                    try:
+                        types = col_types.get(tname) or {}
+                        for k, t in types.items():
+                            if 'BOOL' in t and k in obj and isinstance(obj[k], (int, float)):
+                                obj[k] = bool(obj[k])
+                    except Exception:
+                        pass
+                    items.append(obj)
+                out[tname] = items
+            except Exception:
+                pass
+        # Return canonical tables-only snapshot
+        return { 'tables': out }
+
+    def _run_concurrent(self, spec, db_path):
+        """Run tick and commands concurrently against the same SQLite file.
+
+        Spec format:
+          {
+            "commands": [ {"handler":..., "command":..., "input":..., "delay_ms": 0}, ... ],
+            "tick": {"runs": 1, "time_now_ms": 1000, "delay_ms": 0, "interval_ms": 0}
+          }
+        Each worker creates its own DB connection bound to db_path to avoid cross-thread sqlite issues.
+        """
+        import threading
+        import time as _time
+        from core.db import create_db
+
+        errors = []
+
+        def run_command_worker(cmd_def):
+            try:
+                delay = int(cmd_def.get("delay_ms", 0))
+                if delay:
+                    _time.sleep(delay / 1000.0)
+                db_local = create_db(db_path=db_path)
+                from core.command import run_command
+                handler = cmd_def["handler"]
+                command = cmd_def["command"]
+                input_data = cmd_def.get("input", {})
+                time_now_ms = cmd_def.get("time_now_ms")
+                run_command(handler, command, input_data, db_local, time_now_ms=time_now_ms)
+                if hasattr(db_local, 'close'):
+                    db_local.close()
+            except Exception as e:
+                self.log(f"Concurrent command failed: {e}", "ERROR")
+                errors.append(e)
+
+        def run_tick_worker(tick_def):
+            try:
+                delay = int(tick_def.get("delay_ms", 0))
+                if delay:
+                    _time.sleep(delay / 1000.0)
+                runs = int(tick_def.get("runs", 1))
+                interval = int(tick_def.get("interval_ms", 0))
+                time_now_ms = tick_def.get("time_now_ms")
+                from core.tick import tick
+                db_local = create_db(db_path=db_path)
+                for i in range(runs):
+                    tick(db_local, time_now_ms=time_now_ms)
+                    if interval and i < runs - 1:
+                        _time.sleep(interval / 1000.0)
+                if hasattr(db_local, 'close'):
+                    db_local.close()
+            except Exception as e:
+                self.log(f"Concurrent tick failed: {e}", "ERROR")
+                errors.append(e)
+
+        threads = []
+        for cmd in spec.get("commands", []):
+            t = threading.Thread(target=run_command_worker, args=(cmd,), daemon=True)
+            threads.append(t)
+        tick_spec = spec.get("tick")
+        if tick_spec:
+            threads.append(threading.Thread(target=run_tick_worker, args=(tick_spec,), daemon=True))
+
+        # If using in-memory DB, switch to a temporary file so threads share state
+        if db_path == ':memory:':
+            tmp_path = f".concurrent_{int(_time.time()*1000)}.db"
+            self.log(f"Concurrent test requires file-backed DB, switching to {tmp_path}")
+            db_path = tmp_path
+            self._track_db_file(tmp_path)
+
+        # Start all threads
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        if errors:
+            raise errors[0]
     
     def execute_command(self, cmd, db):
         """Execute a command and return its result"""
@@ -336,33 +614,51 @@ class TestRunner:
                 for i, perm in enumerate(all_permutations):
                     self.log(f"Testing permutation {i+1}/{len(all_permutations)}: {[e['data']['type'] for e in perm if 'data' in e]}")
                     
-                    # Create a modified test with this permutation
-                    perm_test = copy.deepcopy(test)
-                    perm_test["given"]["db"]["eventStore"] = []  # Clear eventStore
-                    if "envelope" in perm_test["given"]:
-                        del perm_test["given"]["envelope"]  # Remove envelope
-                    
-                    # Process events in this order
-                    perm_db = copy.deepcopy(test["given"].get("db", {}))
+                    # Create a persistent DB and seed SQL from given state
+                    from core.db import create_db
+                    import uuid as _uuid
+                    base_test_db = os.environ.get('TEST_DB_PATH', ':memory:')
+                    if base_test_db != ':memory:':
+                        test_db_path = base_test_db.replace('.db', f'_{str(_uuid.uuid4())[:8]}.db')
+                    else:
+                        test_db_path = base_test_db
+                    perm_db = create_db(db_path=test_db_path)
+                    self._track_db_file(test_db_path)
+
+                    # Seed SQL only (tables)
+                    given_db = copy.deepcopy(test.get('given', {}).get('db', {}))
+                    try:
+                        self._seed_sql_generic(perm_db, given_db)
+                    except Exception:
+                        pass
+
+                    # Process events in this order using persistent DB
                     from core.handle import handle
-                    
                     for event in perm:
                         perm_db = handle(perm_db, event, time_now_ms=1000)
                     
                     # Run ticks if specified
                     ticks_to_run = test.get('ticks', 0)
                     if ticks_to_run > 0:
-                        if protocol == "framework_tests":
-                            from core.tick import tick
-                        else:
-                            from core.tick import run_all_jobs as tick
-                        
+                        from core.tick import run_all_jobs as tick
                         for _ in range(ticks_to_run):
                             tick(perm_db, time_now_ms=1000)
                     
-                    # Check result matches expected
+                    # Build snapshot for SQL-native protocols
+                    result_obj = {}
+                    try:
+                        # Always use generic SQL snapshot
+                        snap = self._dump_sql_generic(perm_db)
+                        if isinstance(snap, dict):
+                            result_obj['snapshot'] = snap
+                            if 'tables' in snap:
+                                result_obj['tables'] = snap['tables']
+                    except Exception:
+                        pass
+
+                    # Check result matches expected (supports tables/snapshot in 'then')
                     then = test.get("then", {})
-                    matches, path, exp_val, act_val = self.subset_match({"db": perm_db}, then)
+                    matches, path, exp_val, act_val = self.subset_match(result_obj, then)
                     
                     if not matches:
                         self.log(f"Permutation {i+1} FAILED at {path}: expected {exp_val}, got {act_val}", "ERROR")
@@ -383,42 +679,56 @@ class TestRunner:
             given = test.get("given", {})
             then = test.get("then", {})
             envelope = given["envelope"]
-            db = copy.deepcopy(given.get("db", {}))
+            # Use a persistent DB so SQL-only handlers see tables
+            from core.db import create_db
+            import uuid as _uuid
+            base_test_db = os.environ.get('TEST_DB_PATH', ':memory:')
+            if base_test_db != ':memory:':
+                test_db_path = base_test_db.replace('.db', f'_{str(_uuid.uuid4())[:8]}.db')
+            else:
+                test_db_path = base_test_db
+            db = create_db(db_path=test_db_path)
+            # Track for cleanup
+            self._track_db_file(test_db_path)
+            # Seed SQL only (tables)
+            given_db = given.get("db", {})
+            try:
+                self._seed_sql_generic(db, given_db)
+            except Exception:
+                pass
             
             # Call handle directly with the envelope
             from core.handle import handle
             self.log(f"Calling handle with envelope: {envelope}")
             import json
-            self.log(f"Initial db state: {json.dumps(db, indent=2)}")
+            self.log(f"Initial db state: {json.dumps(given_db, indent=2)}")
             
             result_db = handle(db, envelope, time_now_ms=1000)
             
-            self.log(f"Result db after handle: {json.dumps(result_db, indent=2)}")
+            try:
+                rb = result_db.to_dict() if hasattr(result_db, 'to_dict') else result_db
+                self.log(f"Result db after handle: {json.dumps(rb, indent=2)}")
+                # Also log SQL tables when in verbose mode for debugging
+                if self.verbose:
+                    try:
+                        snap_dbg = self._dump_sql_generic(result_db)
+                        self.log(f"SQL tables after handle: {json.dumps(snap_dbg.get('tables', {}), indent=2)}")
+                    except Exception:
+                        pass
+            except Exception:
+                self.log("Result db after handle: <non-serializable>")
             
             # Check for errors
             if 'blocked' in result_db:
                 self.log(f"WARNING: Found blocked envelopes: {result_db['blocked']}", "WARNING")
             
-            # Check what changed
-            if 'state' in db and 'state' in result_db:
-                for key in result_db['state']:
-                    if key not in db.get('state', {}):
-                        self.log(f"State added key '{key}': {result_db['state'][key]}")
-                    elif db['state'].get(key) != result_db['state'].get(key):
-                        self.log(f"State changed key '{key}': {db['state'].get(key)} -> {result_db['state'].get(key)}")
+            # No dict-state diff logging; SQL is the source of truth
             
             # Run ticks if specified
             ticks_to_run = test.get('ticks', 0)
             if ticks_to_run > 0:
                 self.log(f"Running {ticks_to_run} ticks for projector test")
-                
-                # Import tick based on protocol
-                if protocol == "framework_tests":
-                    from core.tick import tick
-                else:
-                    # For other protocols, tick just runs jobs
-                    from core.tick import run_all_jobs as tick
-                
+                from core.tick import run_all_jobs as tick
                 # Run the specified number of ticks
                 base_time = 1000
                 time_increment = 100
@@ -428,13 +738,93 @@ class TestRunner:
                     result_db = tick(result_db, time_now_ms=current_time)
             
             # Check result
-            result = {"db": result_db}
+            result = {}
+            # Generic SQL snapshot only
+            try:
+                snap = self._dump_sql_generic(result_db)
+                if isinstance(snap, dict):
+                    result['snapshot'] = snap
+                    if 'tables' in snap:
+                        result['tables'] = snap['tables']
+            except Exception:
+                pass
             matches, path, exp_val, act_val = self.subset_match(result, then)
-            
-            if matches:
+
+            # Idempotency check (default ON): Re-apply events and expect same SQL tables
+            idempo_failed = False
+            idempo_error = None
+            try:
+                given_db = copy.deepcopy(given.get("db", {}))
+                base_events = []
+                # Collect base events (eventStore + envelope)
+                if "eventStore" in given_db:
+                    base_events.extend(given_db["eventStore"])
+                if envelope:
+                    base_events.append(envelope)
+
+                if base_events:
+                    def _dump_tables_only(db_obj):
+                        snap = self._dump_sql_generic(db_obj)
+                        t = (snap or {}).get('tables', {}) if isinstance(snap, dict) else {}
+                        # Ignore event_store in idempotency comparisons
+                        if 'event_store' in t:
+                            t = {k: v for k, v in t.items() if k != 'event_store'}
+                        return t
+
+                    # Single pass 
+                    # Create a new database for idempotency testing
+                    import uuid as _uuid
+                    base_test_db = os.environ.get('TEST_DB_PATH', ':memory:')
+                    if base_test_db != ':memory:':
+                        single_db_path = base_test_db.replace('.db', f'_idmp_single_{str(_uuid.uuid4())[:8]}.db')
+                    else:
+                        single_db_path = base_test_db
+                    single_db = create_db(db_path=single_db_path)
+                    self._track_db_file(single_db_path)
+                    self._seed_sql_generic(single_db, copy.deepcopy(given_db))
+                    for ev in base_events:
+                        single_db = handle(single_db, ev, time_now_ms=1000)
+                    ticks_to_run = test.get('ticks', 0)
+                    if ticks_to_run > 0:
+                        from core.tick import run_all_jobs as run_tick
+                        for i in range(ticks_to_run):
+                            current_time = 1000 + (i + 1) * 100
+                            single_db = run_tick(single_db, time_now_ms=current_time)
+
+                    # Double pass
+                    if base_test_db != ':memory:':
+                        double_db_path = base_test_db.replace('.db', f'_idmp_double_{str(_uuid.uuid4())[:8]}.db')
+                    else:
+                        double_db_path = base_test_db
+                    doubled_db = create_db(db_path=double_db_path)
+                    self._track_db_file(double_db_path)
+                    self._seed_sql_generic(doubled_db, copy.deepcopy(given_db))
+                    doubled_events = base_events + base_events
+                    for ev in doubled_events:
+                        doubled_db = handle(doubled_db, ev, time_now_ms=1000)
+                    if ticks_to_run > 0:
+                        from core.tick import run_all_jobs as run_tick
+                        for i in range(ticks_to_run):
+                            current_time = 1000 + (i + 1) * 100
+                            doubled_db = run_tick(doubled_db, time_now_ms=current_time)
+
+                    # Compare SQL tables (excluding event_store)
+                    single_tables = _dump_tables_only(single_db)
+                    double_tables = _dump_tables_only(doubled_db)
+                    if single_tables != double_tables:
+                        idempo_failed = True
+                        idempo_error = "Idempotency failed: tables differ after doubling events"
+            except Exception as e:
+                idempo_failed = True
+                idempo_error = f"Idempotency check crashed: {e}"
+
+            if matches and not idempo_failed:
                 return {"scenario": scenario_name, "passed": True, "logs": self.logs}
             else:
-                self.log(f"Mismatch at {path}: expected {exp_val}, got {act_val}", "ERROR")
+                if not matches:
+                    self.log(f"Mismatch at {path}: expected {exp_val}, got {act_val}", "ERROR")
+                if idempo_failed:
+                    self.log(idempo_error, "ERROR")
                 return {"scenario": scenario_name, "passed": False, "logs": self.logs}
         
         
@@ -489,13 +879,15 @@ class TestRunner:
             
             db = create_db(db_path=test_db_path)
             
-            # Store the path for cleanup
-            self._current_test_db = test_db_path
+            # Track the database file for cleanup
+            self._track_db_file(test_db_path)
             
-            # Initialize db with given data
+            # Seed SQL tables generically from given state
             given_db = given.get("db", {})
-            for key, value in given_db.items():
-                db[key] = value
+            try:
+                self._seed_sql_generic(db, given_db)
+            except Exception:
+                pass
             
             try:
                 result = self.execute_command(cmd, db)
@@ -525,13 +917,8 @@ class TestRunner:
                 base_time = given.get("params", {}).get("time_now_ms", 1000)
                 time_increment = 100  # ms between ticks
                 
-                # Import tick based on protocol
-                protocol = handler_file.split('/')[1]  # e.g. "message_via_tor"
-                if protocol == "framework_tests":
-                    from core.tick import tick
-                else:
-                    # For other protocols, tick just runs jobs
-                    from core.tick import run_all_jobs as tick
+                # Run jobs generically for all protocols
+                from core.tick import run_all_jobs as tick
                 
                 # Run the specified number of ticks
                 for i in range(ticks):
@@ -539,9 +926,17 @@ class TestRunner:
                     self.log(f"Tick {i+1} at time {current_time}")
                     db = tick(db, time_now_ms=current_time)
                     
-                # Update result with final db state
-                result["db"] = db
+                # no-op: db state asserted via generic snapshot
             
+            # Always attach a generic SQL snapshot (protocol-agnostic)
+            result_snapshot = None
+            try:
+                result_snapshot = self._dump_sql_generic(db)
+                result['snapshot'] = result_snapshot
+                if isinstance(result_snapshot, dict) and 'tables' in result_snapshot:
+                    result['tables'] = result_snapshot['tables']
+            except Exception:
+                pass
             # Check result
             return_matches = True
             if "return" in then:
@@ -550,30 +945,89 @@ class TestRunner:
                     self.log(f"Mismatch at return{path}: expected {exp_val}, got {act_val}", "ERROR")
                     return_matches = False
             
-            # Check db state if specified
-            db_matches = True
-            if "db" in then:
-                # Convert persistent db to dict for comparison
-                db_dict = db.to_dict() if hasattr(db, 'to_dict') else db
-                db_result = {"db": db_dict}
-                matches, path, exp_val, act_val = self.subset_match(db_result, {"db": then["db"]})
+            # Prefer snapshot assertions when provided
+            snapshot_matches = True
+            if "snapshot" in then and result_snapshot is not None:
+                matches, path, exp_val, act_val = self.subset_match({"snapshot": result_snapshot}, {"snapshot": then["snapshot"]})
                 if not matches:
                     self.log(f"Mismatch at {path}: expected {exp_val}, got {act_val}", "ERROR")
-                    db_matches = False
+                    snapshot_matches = False
+
+            # Direct tables assertions when provided
+            tables_matches = True
+            if "tables" in then:
+                if 'tables' in result:
+                    matches, path, exp_val, act_val = self.subset_match({"tables": result['tables']}, {"tables": then["tables"]})
+                    if not matches:
+                        self.log(f"Mismatch at {path}: expected {exp_val}, got {act_val}", "ERROR")
+                        tables_matches = False
+                else:
+                    self.log("Mismatch: tables expected but no tables in result", "ERROR")
+                    tables_matches = False
             
+            # Idempotency for command tests (default ON): run command once vs twice
+            idempo_failed = False
+            try:
+                def _dump_tables_only(db_obj):
+                    snap = self._dump_sql_generic(db_obj)
+                    t = (snap or {}).get('tables', {}) if isinstance(snap, dict) else {}
+                    return {k: v for k, v in t.items() if k != 'event_store'}
+
+                # Single pass
+                from core.db import create_db as _create
+                import uuid as _uuid
+                base_db_path = os.environ.get('TEST_DB_PATH', ':memory:')
+                single_db_path = base_db_path.replace('.db', f'_idmp1_{str(_uuid.uuid4())[:8]}.db') if base_db_path != ':memory:' else base_db_path
+                single_db = _create(db_path=single_db_path)
+                self._track_db_file(single_db_path)
+                self._seed_sql_generic(single_db, given_db)
+                # Execute the same command once
+                _ = self.execute_command(cmd, single_db)
+                # Ticks
+                if ticks > 0:
+                    from core.tick import run_all_jobs as run_tick
+                    base_time = given.get("params", {}).get("time_now_ms", 1000)
+                    for i in range(ticks):
+                        current_time = base_time + (i + 1) * 100
+                        single_db = run_tick(single_db, time_now_ms=current_time)
+
+                # Double pass
+                double_db_path = base_db_path.replace('.db', f'_idmp2_{str(_uuid.uuid4())[:8]}.db') if base_db_path != ':memory:' else base_db_path
+                double_db = _create(db_path=double_db_path)
+                self._track_db_file(double_db_path)
+                self._seed_sql_generic(double_db, given_db)
+                _ = self.execute_command(cmd, double_db)
+                _ = self.execute_command(cmd, double_db)
+                if ticks > 0:
+                    from core.tick import run_all_jobs as run_tick
+                    base_time = given.get("params", {}).get("time_now_ms", 1000)
+                    for i in range(ticks):
+                        current_time = base_time + (i + 1) * 100
+                        double_db = run_tick(double_db, time_now_ms=current_time)
+
+                if _dump_tables_only(single_db) != _dump_tables_only(double_db):
+                    idempo_failed = True
+                # Track these DBs for cleanup
+                self._track_db_file(single_db_path)
+                self._track_db_file(double_db_path)
+            except Exception:
+                idempo_failed = True
+
             # Close database before returning
             if hasattr(db, 'close'):
                 db.close()
             
-            # Clean up test database file
-            if hasattr(self, '_current_test_db') and self._current_test_db != ':memory:':
-                if os.path.exists(self._current_test_db):
-                    try:
-                        os.remove(self._current_test_db)
-                    except:
-                        pass
+            # Cleanup is now handled by _cleanup_db_files() at the end
                 
-            if return_matches and db_matches:
+            # If SNAPSHOT_ONLY=1 for non-framework protocols, require snapshot block
+            require_snapshot = (os.environ.get('SNAPSHOT_ONLY') == '1')
+            # Require only what is specified (or env-enforced)
+            overall_ok = (
+                return_matches and
+                (snapshot_matches if ("snapshot" in then or require_snapshot) else True) and
+                (tables_matches if ("tables" in then) else True)
+            )
+            if overall_ok and not idempo_failed:
                 return {"scenario": scenario_name, "passed": True, "logs": self.logs}
             else:
                 return {"scenario": scenario_name, "passed": False, "logs": self.logs}
@@ -606,6 +1060,32 @@ class TestRunner:
         results = []
         
         try:
+            # Ensure proper environment (HANDLER_PATH/TEST_DB_PATH) when running a single file
+            try:
+                norm = os.path.normpath(test_path)
+                parts = norm.split(os.sep)
+                if 'protocols' in parts:
+                    idx = parts.index('protocols')
+                    if idx + 1 < len(parts):
+                        protocol_name = parts[idx + 1]
+                        protocol_path = os.path.join(*parts[: idx + 2])
+                        handlers_path = os.path.join(protocol_path, 'handlers')
+                        if os.path.isdir(handlers_path):
+                            os.environ['HANDLER_PATH'] = handlers_path
+                        # Use a protocol-specific DB path so schema (if present) is applied
+                        os.environ['TEST_DB_PATH'] = f".test_{protocol_name}.db"
+                        # Clean any stale DB from previous runs of this single file
+                        try:
+                            if os.path.exists(os.environ['TEST_DB_PATH']):
+                                os.remove(os.environ['TEST_DB_PATH'])
+                        except Exception:
+                            pass
+                # Always enable test-mode logging for single-file runs
+                os.environ['TEST_MODE'] = '1'
+                os.environ['DEBUG_CRYPTO'] = '1'
+            except Exception:
+                pass
+
             with open(test_path, 'r') as f:
                 test_data = json.load(f)
             
@@ -701,7 +1181,10 @@ class TestRunner:
         
         # Clean up any existing test database
         if os.path.exists(test_db_path):
-            os.remove(test_db_path)
+            try:
+                os.remove(test_db_path)
+            except:
+                pass
         
         # Check for schema.sql and validate if present
         schema_file = os.path.join(protocol_path, "schema.sql")
@@ -758,12 +1241,15 @@ class TestRunner:
         # Check for api.yaml and validate if present
         api_file = os.path.join(protocol_path, "api.yaml")
         if os.path.exists(api_file):
-            print(f"\nFound api.yaml, validating API operations...")
-            api_errors = self.validate_api(protocol_name, protocol_path, api_file, handlers_path)
-            if api_errors > 0:
-                print(f"  ❌ API validation found {api_errors} errors")
+            if yaml is None:
+                print("\nFound api.yaml, but PyYAML is not installed; skipping API validation.")
             else:
-                print(f"  ✅ All API operations validated successfully")
+                print(f"\nFound api.yaml, validating API operations...")
+                api_errors = self.validate_api(protocol_name, protocol_path, api_file, handlers_path)
+                if api_errors > 0:
+                    print(f"  ❌ API validation found {api_errors} errors")
+                else:
+                    print(f"  ✅ All API operations validated successfully")
         
         # Run tests for this protocol
         protocol_results = []
@@ -781,6 +1267,16 @@ class TestRunner:
         failed = sum(1 for r in protocol_results if not r["passed"])
         
         print(f"\n{protocol_name} Test Results: {passed} passed, {failed} failed")
+        
+        # Clean up all test databases created for this protocol
+        self._cleanup_db_files()
+        
+        # Also clean up the main protocol test database
+        if os.path.exists(test_db_path):
+            try:
+                os.remove(test_db_path)
+            except:
+                pass
         
         return protocol_results
     
@@ -837,12 +1333,18 @@ class TestRunner:
                         print(f"  {log}")
                 print()
         
+        # Final cleanup of any remaining test databases
+        self._cleanup_db_files()
+        
         return total_failed == 0
     
     def validate_api(self, protocol_name, protocol_path, api_file, handlers_path):
         """Validate API specification against handlers. Returns error count."""
         try:
             # Load API specification
+            if yaml is None:
+                # If YAML isn't available, skip validation cleanly
+                return 0
             with open(api_file, 'r') as f:
                 api_spec = yaml.safe_load(f)
             
@@ -967,8 +1469,47 @@ class TestRunner:
 
 if __name__ == "__main__":
     runner = TestRunner()
-    if "--verbose" in sys.argv:
+    args = [a for a in sys.argv[1:] if not a.startswith('-')]
+    flags = [a for a in sys.argv[1:] if a.startswith('-')]
+
+    if "--verbose" in flags:
         runner.verbose = True
-    
-    success = runner.run_all_tests()
-    sys.exit(0 if success else 1)
+
+    try:
+        # When protocol paths/names are provided, only run those
+        if args:
+            all_ok = True
+            for arg in args:
+                # Support either 'protocols/<name>' or '<name>'
+                if os.path.isdir(arg) and os.path.basename(os.path.dirname(arg)) == 'protocols':
+                    protocol_path = arg
+                    protocol_name = os.path.basename(arg)
+                elif os.path.isdir(os.path.join('protocols', arg)):
+                    protocol_name = arg
+                    protocol_path = os.path.join('protocols', arg)
+                else:
+                    # If it's a file, run it directly
+                    if os.path.isfile(arg):
+                        results = runner.run_file(arg)
+                        ok = all(r.get('passed') for r in results)
+                        all_ok = all_ok and ok
+                        continue
+                    else:
+                        print(f"Unknown path or protocol: {arg}")
+                        all_ok = False
+                        continue
+
+                results = runner.run_protocol_tests(protocol_name, protocol_path)
+                ok = all(r.get('passed') for r in results)
+                all_ok = all_ok and ok
+
+            # Cleanup before exit
+            runner._cleanup_db_files()
+            sys.exit(0 if all_ok else 1)
+
+        # Default: run all protocol tests
+        success = runner.run_all_tests()
+        sys.exit(0 if success else 1)
+    finally:
+        # Always cleanup on exit
+        runner._cleanup_db_files()

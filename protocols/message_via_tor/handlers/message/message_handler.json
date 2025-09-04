@@ -6,171 +6,121 @@
     "tests": [
       {
         "given": {
-          "db": {"state": {"messages": []}},
+          "db": {"tables": {"messages": []}},
           "envelope": {
             "data": {"type": "message", "text": "Hello", "sender": "alice_pub", "sig": "abc"},
             "metadata": {"selfGenerated": true, "received_by": "alice_pub"}
           }
         },
         "then": {
-          "db": {
-            "eventStore": [{
-              "data": {"type": "message", "text": "Hello", "sender": "alice_pub", "sig": "abc"},
-              "metadata": {"selfGenerated": true, "received_by": "alice_pub"}
-            }],
-            "state": {"messages": [{"text": "Hello", "sender": "alice_pub", "timestamp": "*", "received_by": "alice_pub"}]}
+          "tables": {
+            "event_store": [
+              { "event_type": "message", "data": { "type": "message", "text": "Hello", "sender": "alice_pub", "sig": "abc" } }
+            ],
+            "messages": [ { "text": "Hello", "sender": "alice_pub", "received_by": "alice_pub" } ]
           }
         }
       },
       {
         "given": {
-          "db": {"state": {"peers": [{"pubkey": "sender1", "name": "Sender 1", "received_by": "test_identity"}], "messages": [], "identities": [{"pubkey": "test_identity", "privkey": "test_privkey", "name": "Test Identity"}]}},
+          "db": {"tables": {"peers": [{"pubkey": "sender1", "name": "Sender 1", "received_by": "test_identity"}], "messages": [], "identities": [{"pubkey": "test_identity", "privkey": "test_privkey", "name": "Test Identity"}]}},
           "envelope": {
             "data": {"type": "message", "text": "World", "sender": "sender1", "sig": "def"},
             "metadata": {"eventId": "event123", "received_by": "test_identity"}
           }
         },
         "then": {
-          "db": {
-            "eventStore": [{
-              "data": {"type": "message", "text": "World", "sender": "sender1", "sig": "def"},
-              "metadata": {"eventId": "event123", "received_by": "test_identity"}
-            }],
-            "state": {"messages": [{"text": "World", "sender": "sender1", "sig": "def", "id": "event123", "received_by": "test_identity"}]}
+          "tables": {
+            "event_store": [
+              { "event_type": "message", "data": { "type": "message", "text": "World", "sender": "sender1", "sig": "def" } }
+            ],
+            "messages": [ { "text": "World", "sender": "sender1", "sig": "def", "event_id": "event123", "received_by": "test_identity" } ]
           }
         }
       },
       {
         "description": "Message from unknown sender (no peers) should be stored with unknown_peer flag",
         "given": {
-          "db": {"state": {"peers": [], "messages": []}},
+          "db": {"tables": {"peers": [], "messages": []}},
           "envelope": {
             "data": {"type": "message", "text": "Unknown", "sender": "unknown_sender"},
             "metadata": {}
           }
         },
         "then": {
-          "db": {
-            "eventStore": [{
-              "data": {"type": "message", "text": "Unknown", "sender": "unknown_sender"},
-              "metadata": {}
-            }],
-            "state": {"messages": [{"text": "Unknown", "sender": "unknown_sender", "timestamp": "*", "unknown_peer": true}]}
-          }
+          "tables": { "messages": [ { "text": "Unknown", "sender": "unknown_sender", "unknown_peer": true } ] }
         }
       },
       {
         "description": "Self-generated message should be stored with received_by set to sender",
         "given": {
-          "db": { "state": { "messages": [] } },
+          "db": { "tables": { "messages": [] } },
           "envelope": {
             "data": { "type": "message", "text": "Hello", "sender": "peerA", "sig": "abc" },
             "metadata": { "selfGenerated": true }
           }
         },
         "then": {
-          "db": {
-            "eventStore": [{
-              "data": { "type": "message", "text": "Hello", "sender": "peerA", "sig": "abc" },
-              "metadata": { "selfGenerated": true }
-            }],
-            "state": {
-              "messages": [ { "text": "Hello", "sender": "peerA", "received_by": "peerA", "timestamp": "*" } ]
-            }
-          }
+          "tables": { "messages": [ { "text": "Hello", "sender": "peerA", "received_by": "peerA" } ] }
         }
       },
       {
         "description": "Message from known sender should be stored normally",
         "given": {
-          "db": { "state": { "messages": [], "peers": [{"pubkey": "peerA", "name": "Peer A", "received_by": "peerB"}], "identities": [{"pubkey": "peerB", "privkey": "peerB_priv", "name": "Peer B"}] } },
+          "db": { "tables": { "messages": [], "peers": [{"pubkey": "peerA", "name": "Peer A", "received_by": "peerB"}], "identities": [{"pubkey": "peerB", "privkey": "peerB_priv", "name": "Peer B"}] } },
           "envelope": {
             "data": { "type": "message", "text": "Hi", "sender": "peerA", "sig": "def" },
             "metadata": {"received_by": "peerB"}
           }
         },
         "then": {
-          "db": {
-            "eventStore": [{
-              "data": { "type": "message", "text": "Hi", "sender": "peerA", "sig": "def" },
-              "metadata": {"received_by": "peerB"}
-            }],
-            "state": {
-              "messages": [ { "text": "Hi", "sender": "peerA", "timestamp": "*", "received_by": "peerB" } ]
-            }
-          }
+          "tables": { "messages": [ { "text": "Hi", "sender": "peerA", "received_by": "peerB" } ] }
         }
       },
       {
         "description": "Projector should ignore messages lacking text/content (with known sender)",
         "given": {
-          "db": { "state": { "messages": [], "peers": [{"pubkey": "peerA", "name": "Peer A", "received_by": "peerB"}] } },
+          "db": { "tables": { "messages": [], "peers": [{"pubkey": "peerA", "name": "Peer A", "received_by": "peerB"}] } },
           "envelope": {
             "data": { "type": "message", "sender": "peerA" },
             "metadata": {"received_by": "peerB"}
           }
         },
         "then": {
-          "db": {
-            "state": { "messages": [] }
-          }
+          "tables": { "messages": [] }
         }
       },
       {
         "description": "Projector should not add to outgoing for non-self-generated messages (with known sender)",
         "given": {
-          "db": { "state": { "messages": [], "outgoing": [], "peers": [{"pubkey": "peerA", "name": "Peer A", "received_by": "peerB"}], "identities": [{"pubkey": "peerB", "privkey": "peerB_priv", "name": "Peer B"}] } },
+          "db": { "tables": { "messages": [], "outgoing": [], "peers": [{"pubkey": "peerA", "name": "Peer A", "received_by": "peerB"}], "identities": [{"pubkey": "peerB", "privkey": "peerB_priv", "name": "Peer B"}] } },
           "envelope": {
             "data": { "type": "message", "text": "External", "sender": "peerA", "sig": "xyz" },
             "metadata": { "selfGenerated": false, "received_by": "peerB" }
           }
         },
         "then": {
-          "db": {
-            "eventStore": [{
-              "data": { "type": "message", "text": "External", "sender": "peerA", "sig": "xyz" },
-              "metadata": { "selfGenerated": false, "received_by": "peerB" }
-            }],
-            "state": {
-              "messages": [ { "text": "External", "sender": "peerA", "timestamp": "*", "received_by": "peerB" } ],
-              "outgoing": []
-            }
-          }
+          "tables": { "messages": [ { "text": "External", "sender": "peerA", "received_by": "peerB" } ], "outgoing": [] }
         }
       },
       {
         "description": "Message from unknown peer should be marked as unknown-peer",
         "given": {
-          "db": { "state": { "messages": [], "peers": [] } },
+          "db": { "tables": { "messages": [], "peers": [] } },
           "envelope": {
             "data": { "type": "message", "text": "Hello from unknown", "sender": "unknown_pub", "sig": "xyz" },
             "metadata": {}
           }
         },
         "then": {
-          "db": {
-            "eventStore": [{
-              "data": { "type": "message", "text": "Hello from unknown", "sender": "unknown_pub", "sig": "xyz" },
-              "metadata": {}
-            }],
-            "state": { 
-              "messages": [{ 
-                "text": "Hello from unknown", 
-                "sender": "unknown_pub", 
-                "sig": "xyz", 
-                "timestamp": "*",
-                "unknown_peer": true 
-              }],
-              "peers": []
-            }
-          }
+          "tables": { "messages": [ { "text": "Hello from unknown", "sender": "unknown_pub", "unknown_peer": true } ] }
         }
       },
       {
         "description": "Message from known peer should not be marked as unknown-peer",
         "given": {
           "db": { 
-            "state": { 
+            "tables": { 
               "messages": [], 
               "peers": [{ "pubkey": "known_pub", "name": "Known Peer", "received_by": "test_identity" }],
               "identities": [{"pubkey": "test_identity", "privkey": "test_privkey", "name": "Test Identity"}]
@@ -182,28 +132,14 @@
           }
         },
         "then": {
-          "db": {
-            "eventStore": [{
-              "data": { "type": "message", "text": "Hello from known", "sender": "known_pub", "sig": "abc" },
-              "metadata": {"received_by": "test_identity"}
-            }],
-            "state": { 
-              "messages": [{ 
-                "text": "Hello from known", 
-                "sender": "known_pub", 
-                "sig": "abc", 
-                "timestamp": "*",
-                "received_by": "test_identity"
-              }]
-            }
-          }
+          "tables": { "messages": [ { "text": "Hello from known", "sender": "known_pub", "received_by": "test_identity" } ] }
         }
       },
       {
         "description": "Message should be marked as unknown_peer when sender is not known to the specific recipient",
         "given": {
           "db": { 
-            "state": { 
+            "tables": { 
               "messages": [],
               "peers": [
                 { "pubkey": "peer1", "name": "Peer 1", "received_by": "identity1" },
@@ -221,22 +157,7 @@
           }
         },
         "then": {
-          "db": {
-            "eventStore": [{ 
-              "data": { "type": "message", "text": "Hello from peer1", "sender": "peer1", "sig": "xyz" },
-              "metadata": {"received_by": "identity2"}
-            }],
-            "state": { 
-              "messages": [{ 
-                "text": "Hello from peer1", 
-                "sender": "peer1", 
-                "sig": "xyz", 
-                "timestamp": "*",
-                "received_by": "identity2",
-                "unknown_peer": true
-              }]
-            }
-          }
+          "tables": { "messages": [ { "text": "Hello from peer1", "sender": "peer1", "received_by": "identity2", "unknown_peer": true } ] }
         }
       }
     ]
@@ -250,7 +171,7 @@
           "description": "Message with no known peers",
           "given": {
             "db": {
-              "state": {
+              "tables": {
                 "peers": [],
                 "identities": [{"pubkey": "test_pubkey", "privkey": "test_privkey", "name": "Test"}]
               }
@@ -264,7 +185,7 @@
           "description": "Message broadcast to all known peers",
           "given": {
             "db": {
-              "state": {
+              "tables": {
                 "identities": [
                   {
                     "pubkey": "dummy_pubkey_sender",
@@ -284,19 +205,11 @@
           },
           "then": {
             "return": {"api_response": {"return": "Message broadcast to 2 peers", "messageId": "*", "sentTo": 2}, "newEvents": [{"type": "message", "text": "Hello peers", "sig": "*"}]},
-            "db": {
-              "state": {
-                "outgoing": [
-                  {
-                    "recipient": "peer1",
-                    "data": {"type": "message", "text": "Hello peers", "sig": "*"}
-                  },
-                  {
-                    "recipient": "peer2",
-                    "data": {"type": "message", "text": "Hello peers", "sig": "*"}
-                  }
-                ]
-              }
+            "tables": {
+              "outgoing": [
+                {"recipient": "peer1", "data": {"type": "message", "text": "Hello peers", "sig": "*"}},
+                {"recipient": "peer2", "data": {"type": "message", "text": "Hello peers", "sig": "*"}}
+              ]
             }
           }
         },
@@ -304,7 +217,7 @@
           "description": "Message broadcast to peers is delivered after ticks", 
           "given": {
             "db": {
-              "state": {
+              "tables": {
                 "identities": [
                   {
                     "pubkey": "dummy_pubkey_alice",
@@ -335,15 +248,7 @@
                 "sentTo": 2
               }
             },
-            "db": {
-              "state": {
-                "messages": [{
-                  "text": "Hello via ticks",
-                  "sender": "*"
-                }],
-                "outgoing": []
-              }
-            }
+            "tables": { "outgoing": [] }
           }
         }
       ]
@@ -355,7 +260,7 @@
         {
           "given": {
             "db": {
-              "state": {
+              "tables": {
                 "messages": [
                   {"text": "Hi", "sender": "peer1", "recipient": "peer2", "timestamp": 100, "received_by": "peer1"},
                   {"text": "Hello", "sender": "peer2", "recipient": "peer1", "timestamp": 200, "received_by": "peer1"}
@@ -380,7 +285,7 @@
           "description": "List should exclude messages marked as unknown_peer",
           "given": {
             "db": {
-              "state": {
+              "tables": {
                 "messages": [
                   {"text": "Hi", "sender": "peer1", "recipient": "peer2", "timestamp": 100, "received_by": "peer1"},
                   {"text": "Unknown message", "sender": "unknown1", "recipient": "peer1", "timestamp": 150, "unknown_peer": true, "received_by": "peer1"},

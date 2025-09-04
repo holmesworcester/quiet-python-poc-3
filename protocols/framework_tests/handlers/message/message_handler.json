@@ -34,11 +34,9 @@
         "description": "Valid sender's message is projected to state",
         "given": {
           "db": {
-            "eventStore": [],
-            "state": {
-              "known_senders": [
-                "pubkey1"
-              ]
+            "tables": {
+              "identities": [ {"pubkey": "pubkey1", "privkey": "0"} ],
+              "known_senders": [ {"pubkey": "pubkey1"} ]
             }
           },
           "newEvent": {
@@ -48,25 +46,23 @@
           }
         },
         "then": {
-          "db": {
-            "eventStore": [
+          "tables": {
+            "event_store": [
               {
+                "event_type": "message",
                 "data": {
                   "type": "message",
                   "text": "Hello",
                   "sender": "pubkey1"
-                },
-                "metadata": {}
+                }
               }
             ],
-            "state": {
-              "messages": [
-                {
-                  "text": "Hello",
-                  "*": "*"
-                }
-              ]
-            }
+            "messages": [
+              {
+                "text": "Hello",
+                "sender": "pubkey1"
+              }
+            ]
           }
         }
       },
@@ -74,7 +70,7 @@
         "description": "Unknown sender's message is stored but not projected",
         "given": {
           "db": {
-            "state": {
+            "tables": {
               "known_senders": []
             }
           },
@@ -85,20 +81,18 @@
           }
         },
         "then": {
-          "db": {
-            "eventStore": [
+          "tables": {
+            "event_store": [
               {
+                "event_type": "message",
                 "data": {
                   "type": "message",
                   "text": "Invalid",
                   "sender": "unknown"
-                },
-                "metadata": {}
+                }
               }
             ],
-            "state": {
-              "messages": []
-            }
+            "messages": []
           }
         }
       }

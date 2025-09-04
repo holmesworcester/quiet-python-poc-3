@@ -9,6 +9,7 @@ if handler_dir not in sys.path:
     sys.path.insert(0, handler_dir)
 
 from identity import create as identity_create
+import json
 
 
 def execute(input_data, db):
@@ -90,12 +91,17 @@ def execute(input_data, db):
         "data": our_peer_event
     }
     
-    # Update outgoing queue in state
-    state = db.get('state', {})
-    if 'outgoing' not in state:
-        state['outgoing'] = []
-    state['outgoing'].append(outgoing_peer_event)
-    db['state'] = state
+    # Persist to SQL outgoing if available
+    try:
+        if hasattr(db, 'conn'):
+            cur = db.conn.cursor()
+            cur.execute(
+                "INSERT INTO outgoing(recipient, data, created_at, sent) VALUES(?, ?, ?, 0)",
+                (peer_pubkey, json.dumps(our_peer_event), int(input_data.get('time_now_ms') or 0))
+            )
+            db.conn.commit()
+    except Exception:
+        pass
     
     # Combine all events
     all_events = identity_events + [inviter_peer_event]

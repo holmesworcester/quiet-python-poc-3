@@ -11,39 +11,25 @@
           "description": "Pre-decrypted envelope from tor_simulator passes through unchanged",
           "given": {
             "db": {
-              "incoming": [
-                {
-                  "envelope": true,
-                  "data": {
-                    "type": "message",
-                    "text": "Test",
-                    "sender": "alice"
-                  },
-                  "metadata": {
-                    "origin": "network",
-                    "receivedAt": 1000
+              "tables": {
+                "incoming": [
+                  {
+                    "recipient": "alice",
+                    "data": {"type": "message", "text": "Test", "sender": "alice"},
+                    "metadata": {"origin": "network", "receivedAt": 1000},
+                    "received_at": 1000
                   }
-                }
-              ],
-              "state": {}
+                ]
+              }
             },
             "params": {
               "time_now_ms": 1000
             }
           },
           "then": {
-            "db": {
+            "tables": { 
               "incoming": [],
-              "eventStore": [
-                {
-                  "data": {
-                    "type": "message",
-                    "text": "Test",
-                    "sender": "alice"
-                  },
-                  "metadata": {}
-                }
-              ]
+              "event_store": [ { "event_type": "message", "data": { "type": "message", "text": "Test", "sender": "alice" } } ] 
             }
           }
         },
@@ -51,34 +37,20 @@
           "description": "Multiple envelopes are processed in order",
           "given": {
             "db": {
-              "incoming": [
-                {
-                  "envelope": true,
-                  "data": {
-                    "type": "message",
-                    "text": "First",
-                    "sender": "alice"
+              "tables": {
+                "incoming": [
+                  {
+                    "recipient": "id1",
+                    "data": {"type": "message", "text": "First", "sender": "alice"},
+                    "metadata": {"receivedAt": 1000},
+                    "received_at": 1000
                   },
-                  "metadata": {
-                    "receivedAt": 1000
+                  {
+                    "recipient": "id1",
+                    "data": {"type": "message", "text": "Second", "sender": "bob"},
+                    "metadata": {"receivedAt": 2000},
+                    "received_at": 2000
                   }
-                },
-                {
-                  "envelope": true,
-                  "data": {
-                    "type": "message",
-                    "text": "Second",
-                    "sender": "bob"
-                  },
-                  "metadata": {
-                    "receivedAt": 2000
-                  }
-                }
-              ],
-              "state": {
-                "known_senders": [
-                  "alice",
-                  "bob"
                 ]
               }
             },
@@ -87,26 +59,9 @@
             }
           },
           "then": {
-            "db": {
+            "tables": { 
               "incoming": [],
-              "eventStore": [
-                {
-                  "data": {
-                    "type": "message",
-                    "text": "First",
-                    "sender": "alice"
-                  },
-                  "metadata": {}
-                },
-                {
-                  "data": {
-                    "type": "message",
-                    "text": "Second",
-                    "sender": "bob"
-                  },
-                  "metadata": {}
-                }
-              ]
+              "event_store": [ { "event_type": "message", "data": { "type": "message", "text": "First", "sender": "alice" } }, { "event_type": "message", "data": { "type": "message", "text": "Second", "sender": "bob" } } ] 
             }
           }
         }

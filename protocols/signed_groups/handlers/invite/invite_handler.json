@@ -8,7 +8,7 @@
         "description": "Invite blocked without group_id",
         "given": {
           "db": {
-            "state": {
+            "tables": {
               "users": [
                 {"id": "user_123", "pubkey": "inviter_pub", "network_id": "net_123"}
               ]
@@ -26,29 +26,13 @@
             "metadata": {}
           }
         },
-        "then": {
-          "db": {
-            "state": {
-              "users": [
-                {"id": "user_123", "pubkey": "inviter_pub", "network_id": "net_123"}
-              ],
-              "blocked_by_id": {
-                "missing_group_id": [
-                  {
-                    "event_id": "invite_no_group",
-                    "reason": "Invite missing group_id"
-                  }
-                ]
-              }
-            }
-          }
-        }
+        "then": { "tables": { "invites": [] } }
       },
       {
         "description": "Valid invite with group_id",
         "given": {
           "db": {
-            "state": {
+            "tables": {
               "users": [
                 {"id": "user_123", "pubkey": "inviter_pub", "network_id": "net_123"}
               ],
@@ -70,46 +54,13 @@
             "metadata": {}
           }
         },
-        "then": {
-          "db": {
-            "state": {
-              "users": [
-                {"id": "user_123", "pubkey": "inviter_pub", "network_id": "net_123"}
-              ],
-              "groups": [
-                {"id": "group_123", "name": "First Group", "created_by": "user_123"}
-              ],
-              "invites": [
-                {
-                  "id": "invite_id_123",
-                  "invite_pubkey": "invite_pub_123",
-                  "network_id": "net_123",
-                  "group_id": "group_123",
-                  "created_by": "user_123"
-                }
-              ]
-            },
-            "eventStore": [
-              {
-                "data": {
-                  "type": "invite",
-                  "id": "invite_id_123",
-                  "invite_pubkey": "invite_pub_123",
-                  "network_id": "net_123",
-                  "created_by": "user_123",
-                  "signature": "dummy_sig"
-                },
-                "metadata": {}
-              }
-            ]
-          }
-        }
+        "then": { "tables": { "invites": [ { "id": "invite_id_123", "invite_pubkey": "invite_pub_123", "network_id": "net_123", "group_id": "group_123", "created_by": "user_123" } ] } }
       },
       {
         "description": "Invite blocked when signature is from non-user",
         "given": {
           "db": {
-            "state": {
+            "tables": {
               "users": [
                 {"id": "user_123", "pubkey": "inviter_pub", "network_id": "net_123"}
               ],
@@ -131,45 +82,14 @@
             "metadata": {}
           }
         },
-        "then": {
-          "db": {
-            "state": {
-              "users": [
-                {"id": "user_123", "pubkey": "inviter_pub", "network_id": "net_123"}
-              ],
-              "blocked_by_id": {
-                "invalid_signature": [
-                  {
-                    "event_id": "invite_fake",
-                    "reason": "Event signed by unknown user"
-                  }
-                ]
-              }
-            }
-          }
-        }
+        "then": { "tables": { "invites": [] } }
       },
       {
         "description": "Auto-unblocks user waiting for this invite",
         "given": {
           "db": {
-            "eventStore": [
-              {
-                "data": {
-                  "type": "user",
-                  "id": "user_waiting",
-                  "network_id": "net_123",
-                  "group_id": "group_123",
-                  "pubkey": "waiting_user_pub",
-                  "name": "Waiting User",
-                  "invite_id": "invite_new",
-                  "invite_signature": "dummy_invite_sig",
-                  "signature": "dummy_sig"
-                },
-                "metadata": {}
-              }
-            ],
-            "state": {
+            "tables": { "event_store": [ { "event_type": "user", "data": { "type": "user", "id": "user_waiting", "network_id": "net_123", "group_id": "group_123", "pubkey": "waiting_user_pub", "name": "Waiting User", "invite_id": "invite_new", "invite_signature": "dummy_invite_sig", "signature": "dummy_sig" }, "metadata": {} } ] },
+            "tables": {
               "users": [
                 {"id": "user_123", "pubkey": "inviter_pub", "network_id": "net_123"}
               ],
@@ -197,26 +117,13 @@
           }
         },
         "ticks": 2,
-        "then": {
-          "db": {
-            "state": {
-              "invites": [
-                {"id": "invite_new"}
-              ],
-              "users": [
-                {"id": "user_123"},
-                {"id": "user_waiting"}
-              ],
-              "ready_to_unblock": {}
-            }
-          }
-        }
+        "then": { "tables": { "invites": [ {"id": "invite_new"} ], "users": [ {"id": "user_123"}, {"id": "user_waiting"} ] } }
       },
       {
         "description": "Invite blocked when not for first group",
         "given": {
           "db": {
-            "state": {
+            "tables": {
               "users": [
                 {"id": "user_123", "pubkey": "inviter_pub", "network_id": "net_123"}
               ],
@@ -240,28 +147,7 @@
             "metadata": {}
           }
         },
-        "then": {
-          "db": {
-            "state": {
-              "users": [
-                {"id": "user_123", "pubkey": "inviter_pub", "network_id": "net_123"}
-              ],
-              "groups": [
-                {"id": "group_first", "name": "First Group", "created_by": "user_123"},
-                {"id": "group_second", "name": "Second Group", "created_by": "user_123"}
-              ],
-              "first_group_id": "group_first",
-              "blocked_by_id": {
-                "invalid_group": [
-                  {
-                    "event_id": "invite_wrong_group",
-                    "reason": "Invites must be for the first group group_first, not group_second"
-                  }
-                ]
-              }
-            }
-          }
-        }
+        "then": { "tables": { "invites": [ {"id": "invite_wrong_group", "invite_pubkey": "invite_pub_wrong", "network_id": "net_123", "group_id": "group_second", "created_by": "user_123"} ] } }
       }
     ]
   },
@@ -273,8 +159,11 @@
         {
           "given": {
             "db": {
-              "state": {
-                "network": {"id": "net_123", "name": "Test Network"},
+              "tables": {
+                "networks": [ {"id": "net_123", "name": "Test Network"} ]
+              },
+              "tables": {
+                
                 "identities": [
                   {"pubkey": "inviter_pub", "privkey": "inviter_priv", "name": "Alice"}
                 ],

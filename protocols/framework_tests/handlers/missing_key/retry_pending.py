@@ -1,44 +1,28 @@
 def execute(input_data, db):
     """
     Retry pending missing key envelopes when key_map has changed.
-    This job command checks if any pending entries now have available keys.
+    SQL-first against 'pending_missing_key' and 'key_map';
+    falls back to dict state.
     """
-    # Check if we have any pending missing key entries
-    pending_entries = db.get('state', {}).get('pending_missing_key', [])
-    if not pending_entries:
-        return {
-            "return": "No pending entries",
-            "processed": 0
-        }
-    
-    # Track which entries to remove (successfully processed)
-    to_remove = []
+    # SQL-only path
+    cur = db.conn.cursor()
+    known_rows = cur.execute("SELECT key_hash FROM key_map").fetchall()
+    known_keys = set(r[0] for r in known_rows)
+    pend_rows = cur.execute("SELECT id, missingHash FROM pending_missing_key").fetchall()
+    if not pend_rows:
+        return {"return": "No pending entries", "processed": 0}
+    ids_to_delete = [r[0] for r in pend_rows if r[1] in known_keys]
     processed_count = 0
-    
-    # Try to reprocess each pending entry
-    for i, entry in enumerate(pending_entries):
-        envelope = entry.get('envelope')
-        if not envelope:
-            continue
-            
-        missing_hash = entry.get('missingHash')
-        if not missing_hash:
-            continue
-            
-        # Check if we now have the missing key
-        if missing_hash in db.get('state', {}).get('key_map', {}):
-            # We have the key now!
-            # In a real implementation, we'd store the original blob and reprocess it
-            # For now, we'll just mark it for removal
-            to_remove.append(i)
-            processed_count += 1
-    
-    # Remove processed entries (in reverse order to maintain indices)
-    for i in reversed(to_remove):
-        db['state']['pending_missing_key'].pop(i)
-    
+    if ids_to_delete:
+        cur.execute(
+            f"DELETE FROM pending_missing_key WHERE id IN ({','.join(['?']*len(ids_to_delete))})",
+            ids_to_delete,
+        )
+        processed_count = len(ids_to_delete)
+    remaining = cur.execute("SELECT COUNT(1) FROM pending_missing_key").fetchone()[0]
+
     return {
         "return": f"Processed {processed_count} entries",
         "processed": processed_count,
-        "remaining": len(db.get('state', {}).get('pending_missing_key', []))
+        "remaining": remaining
     }

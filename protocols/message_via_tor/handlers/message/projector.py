@@ -1,106 +1,126 @@
+import json
+import uuid
+
+
+def _ensure_event_id(metadata):
+    if not isinstance(metadata, dict):
+        return str(uuid.uuid4())
+    eid = metadata.get('eventId')
+    if not eid:
+        eid = str(uuid.uuid4())
+        metadata['eventId'] = eid
+    return eid
+
+
+def _append_event(db, envelope, time_now_ms):
+    if not hasattr(db, 'conn') or db.conn is None:
+        return
+    data = envelope.get('data') or {}
+    metadata = envelope.get('metadata') or {}
+    event_type = data.get('type') or 'unknown'
+    event_id = _ensure_event_id(metadata)
+    pubkey = metadata.get('received_by') or data.get('sender') or data.get('pubkey') or 'unknown'
+    try:
+        cur = db.conn.cursor()
+        cur.execute(
+            """
+            INSERT OR IGNORE INTO event_store(pubkey, event_data, metadata, event_type, event_id, created_at)
+            VALUES(?, ?, ?, ?, ?, ?)
+            """,
+            (
+                pubkey,
+                json.dumps(data, sort_keys=True),
+                json.dumps(metadata, sort_keys=True),
+                event_type,
+                event_id,
+                int(time_now_ms or 0),
+            )
+        )
+    except Exception:
+        pass
+
+
 def project(db, envelope, time_now_ms):
     """
-    Project message events into state.
-    Validates sig using metadata, adds to state.messages if valid.
-    If selfGenerated, this is a message we are sending, so add it to outgoing.
+    Project message events to SQL tables only (no dict-state).
+    Marks unknown_peer when sender is not known to the recipient.
     """
-    # Initialize state if needed
-    if 'state' not in db:
-        db['state'] = {}
-    
     # Get data and metadata
     data = envelope.get('data', {})
     metadata = envelope.get('metadata', {})
-    
-    # Extract sender from data or metadata
     sender = data.get('sender') or metadata.get('sender')
-    
-    # Initialize eventStore if needed (removed duplicate append)
-    
-    # Check if message has text
+
+    # Append to SQL event_store (protocol-owned)
+    _append_event(db, envelope, time_now_ms)
+
+    # Require text
     text = data.get('text')
     if not text:
-        # Skip messages without text
         return db
-        
-    # Initialize received_by early for peer checking
+
+    # Determine received_by
     received_by = metadata.get('received_by')
     if not received_by and metadata.get('selfGenerated'):
-        # For self-generated messages without explicit received_by, we received it at our own address
         received_by = sender
-    
-    # Check if sender is known to the recipient by looking at peers list
-    peers = db['state'].get('peers', [])
+    # If still missing, fall back to sender to satisfy NOT NULL constraint
+    if not received_by:
+        received_by = sender
+
+    # Check if sender is known to the recipient via SQL
     is_known_peer = False
-    
-    # For checking if a peer is known, we need to know who received the message
-    if received_by:
-        # Check if this specific recipient knows the sender
-        for peer in peers:
-            if (peer.get('pubkey') == sender and 
-                peer.get('received_by') == received_by):
-                is_known_peer = True
-                break
-    else:
-        # Legacy behavior: if no received_by is specified, check if peer is known to anyone
-        # This is for backward compatibility with tests
-        peer_pubkeys = [p.get('pubkey') for p in peers]
-        is_known_peer = sender in peer_pubkeys
-    
-    # Process all messages with text
-    # Valid - update state
-    if 'messages' not in db['state']:
-        state = db['state']
-        state['messages'] = []
-        db['state'] = state
-    
-    # Extract message info
-    message = {
-        'text': text,
-        'sender': sender,
-        'timestamp': data.get('timestamp', time_now_ms)
-    }
-    
-    # Add optional fields
-    if data.get('sig'):
-        message['sig'] = data['sig']
-    
-    # Set received_by in the message if we have it
-    if received_by:
-        message['received_by'] = received_by
-    
-    # Only check identity existence for non-self-generated messages with explicit received_by
-    if received_by and not metadata.get('selfGenerated'):
-        # Only store messages for identities that exist in our database
-        our_identities = db['state'].get('identities', [])
-        our_pubkeys = [id.get('pubkey') for id in our_identities]
-        if received_by not in our_pubkeys:
-            # This message is for an identity we don't have
-            return db
-    
-    # Also preserve the intended recipient from the message data
-    if data.get('recipient'):
-        message['recipient'] = data['recipient']
-    
-    if metadata.get('eventId'):
-        message['id'] = metadata['eventId']
-    
-    # Mark as unknown_peer if sender is not known
-    if not is_known_peer:
-        message['unknown_peer'] = True
-    
-    # Get state, add message, and reassign to trigger persistence
-    state = db['state']
-    state['messages'].append(message)
-    db['state'] = state
-    
-    # Store in eventStore
-    if 'eventStore' not in db:
-        db['eventStore'] = []
-    
-    # Get eventStore, modify, and reassign
-    event_store = db['eventStore']
-    event_store.append(envelope)  # Store full envelope
-    db['eventStore'] = event_store
-    
+    if received_by and hasattr(db, 'conn'):
+        try:
+            cur = db.conn.cursor()
+            row = cur.execute(
+                "SELECT 1 FROM peers WHERE pubkey = ? AND received_by = ? LIMIT 1",
+                (sender, received_by)
+            ).fetchone()
+            is_known_peer = bool(row)
+        except Exception:
+            is_known_peer = False
+
+    # Persist to SQL
+    try:
+        if hasattr(db, 'conn'):
+            # Ensure event_id
+            event_id = metadata.get('eventId')
+            if not event_id:
+                try:
+                    import uuid as _uuid
+                    event_id = str(_uuid.uuid4())
+                    # reflect back into envelope for consistency
+                    metadata['eventId'] = event_id
+                except Exception:
+                    event_id = None
+            if received_by and event_id:
+                cur = db.conn.cursor()
+                cur.execute(
+                    """
+                    INSERT OR IGNORE INTO messages (
+                        event_id, text, sender, recipient, received_by, timestamp, sig, unknown_peer, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        event_id,
+                        text,
+                        sender,
+                        data.get('recipient'),
+                        received_by,
+                        int(data.get('timestamp') or time_now_ms or 0),
+                        (data.get('sig') or ''),
+                        0 if is_known_peer else 1,
+                        int(time_now_ms or 0)
+                    )
+                )
+                # Commit is managed by framework transaction
+    except Exception as e:
+        try:
+            import os
+            if os.environ.get('TEST_MODE'):
+                print(f"[message.projector] SQL insert failed: {e}")
+        except Exception:
+            pass
+        # Keep projection resilient if SQL not available or schema mismatch
+        pass
+
     return db

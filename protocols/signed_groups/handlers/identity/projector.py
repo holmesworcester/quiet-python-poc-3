@@ -1,46 +1,37 @@
 def project(db, envelope, time_now_ms):
     """
-    Project identity events into state
+    Project identity events to SQL (dict-state deprecated).
     """
-    if 'state' not in db:
-        db['state'] = {}
-    
-    if 'identities' not in db['state']:
-        db['state']['identities'] = []
-    
     data = envelope.get('data', {})
-    
     if data.get('type') != 'identity':
         return db
-    
+
     pubkey = data.get('pubkey')
     privkey = data.get('privkey')
-    name = data.get('name')
-    
+    name = data.get('name') or (pubkey[:8] if pubkey else None)
     if not pubkey or not privkey:
         return db
-    
-    for existing in db['state']['identities']:
-        if existing.get('pubkey') == pubkey:
-            return db
-    
-    identity_data = {
-        'pubkey': pubkey,
-        'privkey': privkey,
-        'name': name or pubkey[:8]
-    }
-    
-    state = db['state']
-    state['identities'].append(identity_data)
-    # Sort identities by pubkey for deterministic ordering
-    state['identities'].sort(key=lambda i: i['pubkey'])
-    db['state'] = state
-    
-    if 'eventStore' not in db:
-        db['eventStore'] = []
-    
-    event_store = db['eventStore']
-    event_store.append(envelope)
-    db['eventStore'] = event_store
-    
+
+    # Append to SQL event_store (protocol-owned)
+    try:
+        from .._event_store import append as _append_event
+        _append_event(db, envelope, time_now_ms)
+    except Exception:
+        pass
+
+    # Persist to SQL
+    try:
+        if hasattr(db, 'conn'):
+            cur = db.conn.cursor()
+            cur.execute(
+                """
+                INSERT OR IGNORE INTO identities(pubkey, privkey, name, created_at_ms)
+                VALUES(?, ?, ?, ?)
+                """,
+                (pubkey, privkey, name, int(time_now_ms or 0))
+            )
+            db.conn.commit()
+    except Exception:
+        pass
+
     return db

@@ -1,45 +1,38 @@
 def execute(input_data, db):
     """
-    Given a peer public key, returns all messages known to that peer
+    Given a peer public key, returns all messages known to that peer.
+    Prefer SQL when available; fallback to in-memory state otherwise.
     """
     # API passes peerId as path parameter
     peer_pubkey = input_data.get("peerId")
-    
     if not peer_pubkey:
-        return {
-            "api_response": {
-                "return": "Error: No peer ID provided",
-                "error": "Missing peerId"
-            }
-        }
-    
-    # Get messages from state
-    messages = db.get('state', {}).get('messages', [])
-    
-    # Filter messages visible to this peer (received by or sent by)
-    # Also exclude messages marked as unknown_peer
-    peer_messages = []
-    for msg in messages:
-        # Skip messages from unknown peers
-        if msg.get('unknown_peer'):
-            continue
-            
-        # Only show messages received by this peer
-        if msg.get('received_by') == peer_pubkey:
-            peer_messages.append({
-                "text": msg.get('text'),
-                "sender": msg.get('sender'),
-                "recipient": msg.get('recipient'),
-                "timestamp": msg.get('timestamp'),
-                "id": msg.get('id')
-            })
-    
-    # Sort by timestamp
-    peer_messages.sort(key=lambda m: m.get('timestamp', 0))
-    
-    return {
-        "api_response": {
-            "return": f"Found {len(peer_messages)} messages",
-            "messages": peer_messages
-        }
-    }
+        return {"api_response": {"return": "Error: No peer ID provided", "error": "Missing peerId"}}
+
+    messages_out = []
+
+    if hasattr(db, 'conn'):
+        try:
+            cur = db.conn.cursor()
+            rows = cur.execute(
+                """
+                SELECT text, sender, recipient, received_by, timestamp, event_id
+                FROM messages
+                WHERE received_by = ? AND (unknown_peer IS NULL OR unknown_peer = 0)
+                ORDER BY timestamp
+                """,
+                (peer_pubkey,)
+            ).fetchall()
+            for r in rows:
+                messages_out.append({
+                    "text": r[0],
+                    "sender": r[1],
+                    "recipient": r[2],
+                    "timestamp": r[4],
+                    "id": r[5]
+                })
+        except Exception:
+            messages_out = []
+
+    # Dict-state deprecated; no fallback
+
+    return {"api_response": {"return": f"Found {len(messages_out)} messages", "messages": messages_out}}

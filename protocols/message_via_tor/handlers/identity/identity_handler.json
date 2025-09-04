@@ -6,7 +6,7 @@
     "tests": [
       {
         "given": {
-          "db": {"state": {}},
+          "db": {"tables": {}},
           "envelope": {
             "data": {
               "type": "identity",
@@ -18,28 +18,14 @@
           }
         },
         "then": {
-          "db": {
-            "state": {
+            "tables": {
               "identities": [
-                {
-                  "pubkey": "pub123",
-                  "privkey": "priv123",
-                  "name": "Alice"
-                }
+                { "pubkey": "pub123", "privkey": "priv123", "name": "Alice" }
+              ],
+              "event_store": [
+                { "event_type": "identity", "data": { "type": "identity", "pubkey": "pub123", "privkey": "priv123", "name": "Alice" } }
               ]
-            },
-            "eventStore": [
-              {
-                "data": {
-                  "type": "identity",
-                  "pubkey": "pub123",
-                  "privkey": "priv123",
-                  "name": "Alice"
-                },
-                "metadata": {}
-              }
-            ]
-          }
+            }
         }
       }
     ]
@@ -73,7 +59,7 @@
         {
           "given": {
             "db": {
-              "state": {
+              "tables": {
                 "identities": [
                   {"pubkey": "pub1", "privkey": "priv1", "name": "Alice"},
                   {"pubkey": "pub2", "privkey": "priv2", "name": "Bob"}
@@ -102,7 +88,7 @@
         {
           "given": {
             "db": {
-              "state": {
+              "tables": {
                 "identities": [
                   {"pubkey": "pub123", "privkey": "priv123", "name": "Alice"}
                 ]
@@ -152,8 +138,8 @@
             }
           }
         },
-        {
-          "description": "Join creates identity in state after projecting events",
+      {
+        "description": "Join creates identity in state after projecting events",
           "given": {
             "db": {},
             "params": {
@@ -173,21 +159,14 @@
                 "peer": {"pubkey": "pub456", "name": "Bob"}
               }
             },
-            "db": {
-              "state": {
-                "identities": [
-                  {"pubkey": "*", "privkey": "*", "name": "Alice"}
-                ],
-                "peers": [
-                  {"pubkey": "*", "name": "Alice", "joined_via": "direct", "added_at": "*", "received_by": "*"},
-                  {"pubkey": "pub456", "name": "Bob", "joined_via": "invite", "added_at": "*", "received_by": "*"}
-                ]
-              }
+            "tables": {
+              "identities": [ {"pubkey": "*", "name": "Alice"} ],
+              "peers": [ {"pubkey": "*", "name": "Alice"}, {"pubkey": "pub456", "name": "Bob"} ]
             }
           }
-        },
-        {
-          "description": "Join sends peer event to inviter via outgoing queue",
+      },
+      {
+        "description": "Join sends peer event to inviter via outgoing queue",
           "given": {
             "db": {},
             "params": {
@@ -206,21 +185,7 @@
                 "peer": {"pubkey": "pub123", "name": "Alice"}
               }
             },
-            "db": {
-              "state": {
-                "outgoing": [
-                  {
-                    "recipient": "pub123",
-                    "data": {
-                      "type": "peer",
-                      "pubkey": "*",
-                      "name": "Charlie",
-                      "joined_via": "direct"
-                    }
-                  }
-                ]
-              }
-            }
+            "tables": { "outgoing": [ {"recipient": "pub123", "data": {"type": "peer", "name": "Charlie"}} ] }
           }
         }
       ]

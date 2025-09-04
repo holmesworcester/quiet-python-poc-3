@@ -7,7 +7,7 @@
       {
         "given": {
           "db": {
-            "state": {
+            "tables": {
               "identities": [
                 {
                   "pubkey": "test_identity",
@@ -29,29 +29,18 @@
           }
         },
         "then": {
-          "db": {
-            "state": {
-              "peers": [
-                {
-                  "pubkey": "peer123",
-                  "name": "Alice",
-                  "joined_via": "direct",
-                  "added_at": "*",
-                  "received_by": "test_identity"
-                }
-              ]
-            },
-            "eventStore": [
+          "tables": {
+            "peers": [
               {
-                "data": {
-                  "type": "peer",
-                  "pubkey": "peer123",
-                  "name": "Alice"
-                },
-                "metadata": {
-                  "received_by": "test_identity"
-                }
+                "pubkey": "peer123",
+                "name": "Alice",
+                "joined_via": "direct",
+                "received_by": "test_identity",
+                "added_at": "*"
               }
+            ],
+            "event_store": [
+              { "event_type": "peer", "data": { "type": "peer", "pubkey": "peer123", "name": "Alice" } }
             ]
           }
         }
@@ -59,7 +48,7 @@
       {
         "given": {
           "db": {
-            "state": {}
+            "tables": {}
           },
           "envelope": {
             "data": {
@@ -70,31 +59,17 @@
           }
         },
         "then": {
-          "db": {
-            "state": {}
-          }
+          "tables": { "peers": [] }
         }
       },
       {
         "description": "When peer event arrives, should remove unknown_peer flag from matching messages",
         "given": {
           "db": {
-            "state": {
+            "tables": {
               "messages": [
-                {
-                  "text": "Hello from unknown",
-                  "sender": "new_peer",
-                  "timestamp": 1000,
-                  "unknown_peer": true,
-                  "received_by": "test_identity"
-                },
-                {
-                  "text": "Another message",
-                  "sender": "other_peer",
-                  "timestamp": 2000,
-                  "unknown_peer": true,
-                  "received_by": "test_identity"
-                }
+                {"text": "Hello from unknown", "sender": "new_peer", "timestamp": 1000, "unknown_peer": true, "received_by": "test_identity", "event_id": "evt1", "sig": "", "created_at": 0},
+                {"text": "Another message", "sender": "other_peer", "timestamp": 2000, "unknown_peer": true, "received_by": "test_identity", "event_id": "evt2", "sig": "", "created_at": 0}
               ],
               "peers": []
             }
@@ -111,33 +86,14 @@
           }
         },
         "then": {
-          "db": {
-            "state": {
-              "messages": [
-                {
-                  "text": "Hello from unknown",
-                  "sender": "new_peer",
-                  "timestamp": 1000,
-                  "received_by": "test_identity"
-                },
-                {
-                  "text": "Another message",
-                  "sender": "other_peer",
-                  "timestamp": 2000,
-                  "unknown_peer": true,
-                  "received_by": "test_identity"
-                }
-              ],
-              "peers": [
-                {
-                  "pubkey": "new_peer",
-                  "name": "New Peer",
-                  "joined_via": "direct",
-                  "added_at": "*",
-                  "received_by": "test_identity"
-                }
-              ]
-            }
+          "tables": {
+            "messages": [
+              { "text": "Hello from unknown", "sender": "new_peer", "received_by": "test_identity" },
+              { "text": "Another message", "sender": "other_peer", "received_by": "test_identity", "unknown_peer": true }
+            ],
+            "peers": [
+              { "pubkey": "new_peer", "name": "New Peer", "joined_via": "direct", "received_by": "test_identity", "added_at": "*" }
+            ]
           }
         }
       },
@@ -145,18 +101,10 @@
         "description": "Self-generated peer event for own identity should have received_by set to self",
         "given": {
           "db": {
-            "state": {
+            "tables": {
               "identities": [
-                {
-                  "pubkey": "alice_pubkey",
-                  "privkey": "alice_privkey",
-                  "name": "Alice"
-                },
-                {
-                  "pubkey": "bob_pubkey",
-                  "privkey": "bob_privkey",
-                  "name": "Bob"
-                }
+                {"pubkey": "alice_pubkey", "privkey": "alice_privkey", "name": "Alice"},
+                {"pubkey": "bob_pubkey", "privkey": "bob_privkey", "name": "Bob"}
               ],
               "peers": []
             }
@@ -173,41 +121,17 @@
           }
         },
         "then": {
-          "db": {
-            "state": {
-              "peers": [
-                {
-                  "pubkey": "bob_pubkey",
-                  "name": "Bob",
-                  "joined_via": "direct",
-                  "added_at": "*",
-                  "received_by": "bob_pubkey"
-                }
-              ]
-            }
-          }
+          "tables": { "peers": [ { "pubkey": "bob_pubkey", "name": "Bob", "joined_via": "direct", "received_by": "bob_pubkey", "added_at": "*" } ] }
         }
       },
       {
         "description": "Peer event should only remove unknown_peer flag for messages received by same identity",
         "given": {
           "db": {
-            "state": {
+            "tables": {
               "messages": [
-                {
-                  "text": "Message for identity1",
-                  "sender": "new_peer",
-                  "timestamp": 1000,
-                  "unknown_peer": true,
-                  "received_by": "identity1"
-                },
-                {
-                  "text": "Message for identity2",
-                  "sender": "new_peer",
-                  "timestamp": 2000,
-                  "unknown_peer": true,
-                  "received_by": "identity2"
-                }
+                {"text": "Message for identity1", "sender": "new_peer", "timestamp": 1000, "unknown_peer": true, "received_by": "identity1", "event_id": "evt1", "sig": "", "created_at": 0},
+                {"text": "Message for identity2", "sender": "new_peer", "timestamp": 2000, "unknown_peer": true, "received_by": "identity2", "event_id": "evt2", "sig": "", "created_at": 0}
               ],
               "peers": []
             }
@@ -224,33 +148,14 @@
           }
         },
         "then": {
-          "db": {
-            "state": {
-              "messages": [
-                {
-                  "text": "Message for identity1",
-                  "sender": "new_peer",
-                  "timestamp": 1000,
-                  "received_by": "identity1"
-                },
-                {
-                  "text": "Message for identity2",
-                  "sender": "new_peer",
-                  "timestamp": 2000,
-                  "unknown_peer": true,
-                  "received_by": "identity2"
-                }
-              ],
-              "peers": [
-                {
-                  "pubkey": "new_peer",
-                  "name": "New Peer",
-                  "joined_via": "direct",
-                  "added_at": "*",
-                  "received_by": "identity1"
-                }
-              ]
-            }
+          "tables": {
+            "messages": [
+              { "text": "Message for identity1", "sender": "new_peer", "received_by": "identity1" },
+              { "text": "Message for identity2", "sender": "new_peer", "received_by": "identity2", "unknown_peer": true }
+            ],
+            "peers": [
+              { "pubkey": "new_peer", "name": "New Peer", "joined_via": "direct", "received_by": "identity1", "added_at": "*" }
+            ]
           }
         }
       }

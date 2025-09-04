@@ -6,7 +6,7 @@
     "tests": [
       {
         "given": {
-          "db": {"state": {}},
+          "db": {"tables": {}},
           "envelope": {
             "data": {
               "type": "network",
@@ -18,26 +18,7 @@
           }
         },
         "then": {
-          "db": {
-            "state": {
-              "network": {
-                "id": "network_id_123",
-                "name": "Test Network",
-                "creator_pubkey": "test_pubkey_123"
-              }
-            },
-            "eventStore": [
-              {
-                "data": {
-                  "type": "network",
-                  "id": "network_id_123",
-                  "name": "Test Network",
-                  "creator_pubkey": "test_pubkey_123"
-                },
-                "metadata": {}
-              }
-            ]
-          }
+          "tables": { "networks": [ { "id": "network_id_123", "name": "Test Network", "creator_pubkey": "test_pubkey_123" } ] }
         }
       }
     ]
@@ -50,7 +31,7 @@
         {
           "given": {
             "db": {
-              "state": {
+              "tables": {
                 "identities": [
                   {"pubkey": "creator_pub", "privkey": "creator_priv", "name": "Creator"}
                 ]

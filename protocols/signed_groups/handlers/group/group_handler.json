@@ -8,7 +8,7 @@
         "description": "Group created by valid user",
         "given": {
           "db": {
-            "state": {
+            "tables": {
               "users": [
                 {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"}
               ]
@@ -26,20 +26,10 @@
           }
         },
         "then": {
-          "db": {
-            "state": {
-              "users": [
-                {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"}
-              ],
-              "groups": [
-                {
-                  "id": "group_123",
-                  "name": "Developers",
-                  "created_by": "user_123"
-                }
-              ],
-              "first_group_id": "group_123"
-            }
+          "tables": {
+            "groups": [
+              { "id": "group_123", "name": "Developers", "created_by": "user_123" }
+            ]
           }
         }
       },
@@ -47,7 +37,7 @@
         "description": "Group blocked when creator doesn't exist",
         "given": {
           "db": {
-            "state": {}
+            "tables": {}
           },
           "envelope": {
             "data": {
@@ -61,25 +51,14 @@
           }
         },
         "then": {
-          "db": {
-            "state": {
-              "blocked_by_id": {
-                "unknown_user": [
-                  {
-                    "event_id": "group_456",
-                    "reason": "Creator user unknown_user not found"
-                  }
-                ]
-              }
-            }
-          }
+          "tables": { "groups": [] }
         }
       },
       {
         "description": "Group blocked when user_id doesn't match signer",
         "given": {
           "db": {
-            "state": {
+            "tables": {
               "users": [
                 {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"},
                 {"id": "user_456", "pubkey": "other_pub", "network_id": "net_123"}
@@ -98,29 +77,14 @@
           }
         },
         "then": {
-          "db": {
-            "state": {
-              "users": [
-                {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"},
-                {"id": "user_456", "pubkey": "other_pub", "network_id": "net_123"}
-              ],
-              "blocked_by_id": {
-                "signature_mismatch": [
-                  {
-                    "event_id": "group_789",
-                    "reason": "Signature does not match claimed user user_123"
-                  }
-                ]
-              }
-            }
-          }
+          "tables": { "groups": [] }
         }
       },
       {
         "description": "Idempotency - duplicate group doesn't create duplicate state",
         "given": {
           "db": {
-            "state": {
+            "tables": {
               "users": [
                 {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"}
               ],
@@ -132,18 +96,7 @@
                 }
               ]
             },
-            "eventStore": [
-              {
-                "data": {
-                  "type": "group",
-                  "id": "group_123",
-                  "name": "Developers",
-                  "user_id": "user_123",
-                  "signature": "dummy_sig"
-                },
-                "metadata": {}
-              }
-            ]
+            "tables": { "event_store": [ { "event_type": "group", "data": { "type": "group", "id": "group_123", "name": "Developers", "user_id": "user_123", "signature": "dummy_sig" }, "metadata": {} } ] }
           },
           "envelope": {
             "data": {
@@ -157,31 +110,8 @@
           }
         },
         "then": {
-          "db": {
-            "state": {
-              "users": [
-                {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"}
-              ],
-              "groups": [
-                {
-                  "id": "group_123",
-                  "name": "Developers",
-                  "created_by": "user_123"
-                }
-              ]
-            },
-            "eventStore": [
-              {
-                "data": {
-                  "type": "group",
-                  "id": "group_123",
-                  "name": "Developers",
-                  "user_id": "user_123",
-                  "signature": "dummy_sig"
-                },
-                "metadata": {}
-              }
-            ]
+          "tables": {
+            "groups": [ { "id": "group_123", "name": "Developers", "created_by": "user_123" } ]
           }
         }
       },
@@ -189,7 +119,7 @@
         "description": "Second group doesn't change first_group_id",
         "given": {
           "db": {
-            "state": {
+            "tables": {
               "users": [
                 {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"}
               ],
@@ -215,25 +145,11 @@
           }
         },
         "then": {
-          "db": {
-            "state": {
-              "users": [
-                {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"}
-              ],
-              "groups": [
-                {
-                  "id": "group_first",
-                  "name": "First Group",
-                  "created_by": "user_123"
-                },
-                {
-                  "id": "group_second",
-                  "name": "Second Group",
-                  "created_by": "user_123"
-                }
-              ],
-              "first_group_id": "group_first"
-            }
+          "tables": {
+            "groups": [
+              {"id": "group_first", "name": "First Group", "created_by": "user_123"},
+              {"id": "group_second", "name": "Second Group", "created_by": "user_123"}
+            ]
           }
         }
       },
@@ -241,20 +157,8 @@
         "description": "Auto-unblocks add events waiting for this group",
         "given": {
           "db": {
-            "eventStore": [
-              {
-                "data": {
-                  "type": "add",
-                  "id": "add_123",
-                  "group_id": "group_456",
-                  "user_id": "user_789",
-                  "added_by": "user_123",
-                  "signature": "dummy_sig"
-                },
-                "metadata": {}
-              }
-            ],
-            "state": {
+            "tables": { "event_store": [ { "event_type": "add", "data": { "type": "add", "id": "add_123", "group_id": "group_456", "user_id": "user_789", "added_by": "user_123", "signature": "dummy_sig" }, "metadata": {} } ] },
+            "tables": {
               "users": [
                 {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"},
                 {"id": "user_789", "pubkey": "member_pub", "network_id": "net_123"}
@@ -279,38 +183,15 @@
         },
         "ticks": 2,
         "then": {
-          "db": {
-            "state": {
-              "groups": [
-                {"id": "group_456"}
-              ],
-              "adds": [
-                {"id": "add_123"}
-              ],
-              "ready_to_unblock": {}
-            }
-          }
+          "tables": { "groups": [ {"id": "group_456"} ], "adds": [ {"id": "add_123"} ] }
         }
       },
       {
         "description": "Auto-unblocks channel events waiting for this group",
         "given": {
           "db": {
-            "eventStore": [
-              {
-                "data": {
-                  "type": "channel",
-                  "id": "channel_789",
-                  "network_id": "net_123",
-                  "name": "Dev Chat",
-                  "group_id": "group_new",
-                  "created_by": "user_123",
-                  "signature": "dummy_sig"
-                },
-                "metadata": {}
-              }
-            ],
-            "state": {
+            "tables": { "event_store": [ { "event_type": "channel", "data": { "type": "channel", "id": "channel_789", "network_id": "net_123", "name": "Dev Chat", "group_id": "group_new", "created_by": "user_123", "signature": "dummy_sig" }, "metadata": {} } ] },
+            "tables": {
               "users": [
                 {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"}
               ],
@@ -334,17 +215,7 @@
         },
         "ticks": 2,
         "then": {
-          "db": {
-            "state": {
-              "groups": [
-                {"id": "group_new"}
-              ],
-              "channels": [
-                {"id": "channel_789"}
-              ],
-              "ready_to_unblock": {}
-            }
-          }
+          "tables": { "groups": [ {"id": "group_new"} ], "channels": [ {"id": "channel_789"} ] }
         }
       }
     ]

@@ -1,83 +1,72 @@
 def execute(params, db):
     """
-    Process events marked as ready_to_unblock
+    Drain recheck markers and re-process affected events using SQL event_store.
     """
     import os
+    import json as _json
     time_now_ms = params.get('time_now_ms', 1000)
-    state = db.get('state', {})
-    ready_to_unblock = state.get('ready_to_unblock', {})
-    blocked_by_id = state.get('blocked_by_id', {})
-    event_store = db.get('eventStore', [])
+    cursor = getattr(db, 'conn', None).cursor() if hasattr(db, 'conn') else None
+
+    # Optional: acquire a lightweight lease to avoid multiple drainers
+    try:
+        if hasattr(db, 'conn') and params.get('time_now_ms') is not None:
+            from core.lease import acquire_lease
+            now_ms = int(params.get('time_now_ms') or 0)
+            # Short TTL; job runs frequently
+            acquired = acquire_lease(db.conn, 'signed_groups.blocked.process_unblocked', 'job', now_ms, 2000)
+            if not acquired:
+                return {"processed": 0}
+    except Exception:
+        # If lease infra is unavailable, proceed without it
+        pass
     
-    if os.environ.get("TEST_MODE"):
-        print(f"[blocked.process_unblocked] Running with ready_to_unblock: {ready_to_unblock}")
-    
-    if not ready_to_unblock:
+    # Load up to 1000 markers
+    if cursor is not None:
+        rows = cursor.execute(
+            "SELECT event_id FROM recheck_queue ORDER BY available_at_ms LIMIT 1000"
+        ).fetchall()
+        event_ids_to_process = [row[0] for row in rows]
+        if os.environ.get("TEST_MODE"):
+            print(f"[blocked.process_unblocked] Draining markers: {event_ids_to_process}")
+    else:
+        # No SQL connection; nothing to do
         return {"processed": 0}
     
-    # Process up to 1000 events per tick for performance
-    event_ids_to_process = list(ready_to_unblock.keys())[:1000]
-    
-    for event_id in event_ids_to_process:
-        # Begin transaction for this one event (only for persistent db)
-        has_transactions = hasattr(db, 'begin_transaction')
-        if has_transactions:
-            db.begin_transaction()
-        
-        try:
-            # Remove from ready_to_unblock
-            del ready_to_unblock[event_id]
-            state['ready_to_unblock'] = ready_to_unblock
-            
-            # Remove from blocked_by_id structure
-            for blocker_id, blocked_list in list(blocked_by_id.items()):
-                blocked_by_id[blocker_id] = [
-                    b for b in blocked_list if b['event_id'] != event_id
-                ]
-                # Clean up empty lists
-                if not blocked_by_id[blocker_id]:
-                    del blocked_by_id[blocker_id]
-            state['blocked_by_id'] = blocked_by_id
-            
-            
-            # Update db state
-            db['state'] = state
-            
-            # Find the event in eventStore
-            envelope_to_process = None
-            for envelope in event_store:
-                if envelope.get('data', {}).get('id') == event_id:
-                    envelope_to_process = envelope
-                    break
-            
-            if envelope_to_process:
-                # Re-process the event
-                from core.handle import handle
+    # If no markers, nothing to do
+    if not event_ids_to_process:
+        return {"processed": 0}
+
+    # Remove all markers we're about to process
+    try:
+        cursor.execute("DELETE FROM recheck_queue")
+        db.conn.commit()
+    except Exception:
+        pass
+
+    # Replay all events idempotently from SQL event_store
+    processed = 0
+    try:
+        rows = cursor.execute("SELECT data, metadata FROM event_store ORDER BY id").fetchall()
+        from core.handle import handle
+        for row in rows:
+            try:
+                data = row[0]
+                metadata = row[1]
+                try:
+                    data = _json.loads(data) if isinstance(data, (bytes, str)) else data
+                except Exception:
+                    pass
+                try:
+                    metadata = _json.loads(metadata) if isinstance(metadata, (bytes, str)) else (metadata or {})
+                except Exception:
+                    metadata = {}
+                db = handle(db, { 'data': data, 'metadata': metadata }, time_now_ms, auto_transaction=False)
+                processed += 1
+            except Exception as e:
                 if os.environ.get("TEST_MODE"):
-                    print(f"[blocked.process_unblocked] Re-processing event {event_id}")
-                db = handle(db, envelope_to_process, time_now_ms, auto_transaction=False)
-                
-                # Re-read state after handle
-                state = db.get('state', {})
-                ready_to_unblock = state.get('ready_to_unblock', {})
-                blocked_by_id = state.get('blocked_by_id', {})
-            
-            # Commit the transaction
-            if has_transactions:
-                db.commit()
-                
-        except Exception as e:
-            # Rollback on error
-            if has_transactions:
-                db.rollback()
-            
-            # Re-add to ready_to_unblock for retry
-            ready_to_unblock[event_id] = True
-            state['ready_to_unblock'] = ready_to_unblock
-            db['state'] = state
-            
-            # Log the error if in test mode
-            if os.environ.get("TEST_MODE"):
-                print(f"[blocked.job] Failed to process unblocked event {event_id}: {e}")
-    
-    return {"processed": len(event_ids_to_process)}
+                    print(f"[blocked.job] Failed to re-process event: {e}")
+                continue
+    except Exception:
+        pass
+
+    return {"processed": processed}

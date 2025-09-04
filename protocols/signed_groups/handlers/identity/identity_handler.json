@@ -6,7 +6,7 @@
     "tests": [
       {
         "given": {
-          "db": {"state": {}},
+          "db": {"tables": {}},
           "envelope": {
             "data": {
               "type": "identity",
@@ -17,30 +17,7 @@
             "metadata": {}
           }
         },
-        "then": {
-          "db": {
-            "state": {
-              "identities": [
-                {
-                  "pubkey": "test_pubkey_123",
-                  "privkey": "test_privkey_123",
-                  "name": "Alice"
-                }
-              ]
-            },
-            "eventStore": [
-              {
-                "data": {
-                  "type": "identity",
-                  "pubkey": "test_pubkey_123",
-                  "privkey": "test_privkey_123",
-                  "name": "Alice"
-                },
-                "metadata": {}
-              }
-            ]
-          }
-        }
+        "then": { "tables": { "identities": [ { "pubkey": "test_pubkey_123", "privkey": "test_privkey_123", "name": "Alice" } ] } }
       }
     ]
   },

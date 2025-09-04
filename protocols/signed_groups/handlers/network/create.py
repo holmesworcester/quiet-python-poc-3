@@ -10,16 +10,17 @@ def execute(params, db):
     if not name or not identity_id:
         raise ValueError("Network name and identityId are required")
     
-    # Find identity
-    state = db.get('state', {})
-    identities = state.get('identities', [])
-    identity = None
-    for i in identities:
-        if i['pubkey'] == identity_id:
-            identity = i
-            break
-    
-    if not identity:
+    # Find identity via SQL (dict-state deprecated)
+    identity_name = None
+    if hasattr(db, 'conn'):
+        try:
+            cur = db.conn.cursor()
+            row = cur.execute("SELECT name FROM identities WHERE pubkey = ?", (identity_id,)).fetchone()
+            if row:
+                identity_name = row[0] if not isinstance(row, dict) else row.get('name')
+        except Exception:
+            pass
+    if identity_name is None:
         raise ValueError(f"Identity {identity_id} not found")
     
     # Generate network ID (hash of name + creator)
@@ -44,7 +45,7 @@ def execute(params, db):
         'id': user_id,
         'network_id': network_id,
         'pubkey': identity_id,
-        'name': identity['name'],
+        'name': identity_name,
         'signature': user_signature
     }
     

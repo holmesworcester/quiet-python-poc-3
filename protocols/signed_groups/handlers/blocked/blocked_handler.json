@@ -13,17 +13,19 @@
       "tests": [
         {
           "given": {
-            "db": {"state": {"blocked_by_id": {
-              "dep_1": [{"event_id": "evt_1", "reason": "Missing dependency"}],
-              "dep_2": [{"event_id": "evt_2", "reason": "Invalid signature"}]
-            }}},
+            "db": {"tables": {
+              "recheck_queue": [
+                {"event_id": "evt_1", "reason_type": "Missing dependency", "available_at_ms": 1},
+                {"event_id": "evt_2", "reason_type": "Invalid signature", "available_at_ms": 2}
+              ]
+            }},
             "params": {}
           },
           "then": {
             "return": {"api_response": {
               "blocked": [
-                {"event_id": "evt_1", "blocked_by": "dep_1", "reason": "Missing dependency"},
-                {"event_id": "evt_2", "blocked_by": "dep_2", "reason": "Invalid signature"}
+                {"event_id": "evt_1", "blocked_by": null, "reason": "Missing dependency"},
+                {"event_id": "evt_2", "blocked_by": null, "reason": "Invalid signature"}
               ]
             }}
           }

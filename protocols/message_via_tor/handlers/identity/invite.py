@@ -16,15 +16,19 @@ def execute(input_data, db):
             }
         }
     
-    # Find the full identity data
-    identities = db.get('state', {}).get('identities', [])
+    # Lookup identity in SQL
     identity_data = None
-    
-    for id_data in identities:
-        if id_data.get('pubkey') == identity_id:
-            identity_data = id_data
-            break
-    
+    if hasattr(db, 'conn'):
+        try:
+            cur = db.conn.cursor()
+            row = cur.execute(
+                "SELECT pubkey, name FROM identities WHERE pubkey = ? LIMIT 1",
+                (identity_id,)
+            ).fetchone()
+            if row:
+                identity_data = {"pubkey": row[0], "name": row[1]}
+        except Exception:
+            identity_data = None
     if not identity_data:
         return {
             "api_response": {

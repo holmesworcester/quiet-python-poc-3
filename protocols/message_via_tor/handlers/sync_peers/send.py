@@ -10,13 +10,6 @@ def execute(input_data, db):
             "error": "Missing recipient"
         }
     
-    # Initialize state if needed
-    if 'state' not in db:
-        db['state'] = {}
-    
-    if 'outgoing' not in db['state']:
-        db['state']['outgoing'] = []
-    
     # Create sync_peers event
     sync_event = {
         "type": "sync_peers",
@@ -29,9 +22,19 @@ def execute(input_data, db):
         "data": sync_event
     }
     
-    db['state']['outgoing'].append(outgoing)
+    # Persist to SQL outgoing if available
+    try:
+        if hasattr(db, 'conn'):
+            import json
+            cur = db.conn.cursor()
+            cur.execute(
+                "INSERT INTO outgoing(recipient, data, created_at, sent) VALUES(?, ?, ?, 0)",
+                (recipient, json.dumps(sync_event), int(input_data.get('time_now_ms') or 0))
+            )
+            db.conn.commit()
+    except Exception:
+        pass
     
     return {
-        "return": f"Sync request sent to {recipient}",
-        "db": db
+        "return": f"Sync request sent to {recipient}"
     }

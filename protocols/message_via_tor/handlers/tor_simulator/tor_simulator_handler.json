@@ -8,16 +8,10 @@
         {
           "given": {
             "db": {
-              "state": {
+              "tables": {
                 "outgoing": [
-                  {
-                    "recipient": "peer1",
-                    "data": {"type": "message", "text": "Hello", "sender": "peer2"}
-                  },
-                  {
-                    "recipient": "peer2",
-                    "data": {"type": "sync_peers", "sender": "peer1"}
-                  }
+                  {"recipient": "peer1", "data": {"type": "message", "text": "Hello", "sender": "peer2"}, "created_at": 0, "sent": false},
+                  {"recipient": "peer2", "data": {"type": "sync_peers", "sender": "peer1"}, "created_at": 0, "sent": false}
                 ]
               }
             },
@@ -27,18 +21,16 @@
             "return": {
               "return": "Delivered 2 messages"
             },
-            "db": {
-              "state": {
-                "outgoing": []
-              },
+            "tables": {
+              "outgoing": [],
               "incoming": [
                 {
-                  "envelope": true,
+                  "recipient": "peer1",
                   "data": {"type": "message", "text": "Hello", "sender": "peer2"},
                   "metadata": {"origin": "network", "receivedAt": "*", "selfGenerated": false, "received_by": "peer1"}
                 },
                 {
-                  "envelope": true,
+                  "recipient": "peer2",
                   "data": {"type": "sync_peers", "sender": "peer1"},
                   "metadata": {"origin": "network", "receivedAt": "*", "selfGenerated": false, "received_by": "peer2"}
                 }

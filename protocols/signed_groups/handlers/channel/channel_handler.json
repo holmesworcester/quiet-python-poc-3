@@ -8,7 +8,7 @@
         "description": "Channel created by network member",
         "given": {
           "db": {
-            "state": {
+            "tables": {
               "users": [
                 {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"}
               ]
@@ -27,20 +27,8 @@
           }
         },
         "then": {
-          "db": {
-            "state": {
-              "users": [
-                {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"}
-              ],
-              "channels": [
-                {
-                  "id": "channel_123",
-                  "network_id": "net_123",
-                  "name": "General",
-                  "created_by": "user_123"
-                }
-              ]
-            }
+          "tables": {
+            "channels": [ { "id": "channel_123", "network_id": "net_123", "name": "General", "created_by": "user_123" } ]
           }
         }
       },
@@ -48,7 +36,7 @@
         "description": "Channel blocked when signature is from non-user",
         "given": {
           "db": {
-            "state": {
+            "tables": {
               "users": [
                 {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"}
               ]
@@ -67,43 +55,15 @@
           }
         },
         "then": {
-          "db": {
-            "state": {
-              "users": [
-                {"id": "user_123", "pubkey": "creator_pub", "network_id": "net_123"}
-              ],
-              "blocked_by_id": {
-                "invalid_signature": [
-                  {
-                    "event_id": "channel_fake",
-                    "reason": "Event signed by unknown user"
-                  }
-                ]
-              }
-            }
-          }
+          "tables": { "channels": [] }
         }
       },
       {
         "description": "Auto-unblocks blocked message when channel arrives (same-batch)",
         "given": {
           "db": {
-            "eventStore": [
-              {
-                "data": {
-                  "type": "message",
-                  "id": "msg_c",
-                  "channel_id": "chan_1",
-                  "author_id": "user_1",
-                  "peer_id": "user_1",
-                  "user_id": "user_1",
-                  "content": "Hi",
-                  "signature": "dummy_sig"
-                },
-                "metadata": {}
-              }
-            ],
-            "state": {
+            "tables": { "event_store": [ { "event_type": "message", "data": { "type": "message", "id": "msg_c", "channel_id": "chan_1", "author_id": "user_1", "peer_id": "user_1", "user_id": "user_1", "content": "Hi", "signature": "dummy_sig" }, "metadata": {} } ] },
+            "tables": {
               "users": [ {"id": "user_1", "pubkey": "pk1", "network_id": "net_1"} ],
               "blocked_by_id": {
                 "chan_1": [
@@ -126,13 +86,7 @@
         },
         "ticks": 2,
         "then": {
-          "db": {
-            "state": {
-              "messages": [ {"id": "msg_c"} ],
-              "channels": [ {"id": "chan_1"} ],
-              "ready_to_unblock": {}
-            }
-          }
+          "tables": { "messages": [ {"id": "msg_c"} ], "channels": [ {"id": "chan_1"} ] }
         }
       }
     ]

@@ -1,35 +1,75 @@
+import json
+import uuid
+
+
+def _ensure_event_id(metadata):
+    if not isinstance(metadata, dict):
+        return str(uuid.uuid4())
+    eid = metadata.get('eventId')
+    if not eid:
+        eid = str(uuid.uuid4())
+        metadata['eventId'] = eid
+    return eid
+
+
+def _append_event(db, envelope, time_now_ms):
+    if not hasattr(db, 'conn') or db.conn is None:
+        return
+    data = envelope.get('data') or {}
+    metadata = envelope.get('metadata') or {}
+    event_type = data.get('type') or 'unknown'
+    event_id = _ensure_event_id(metadata)
+    pubkey = metadata.get('received_by') or data.get('sender') or data.get('pubkey') or 'unknown'
+    try:
+        cur = db.conn.cursor()
+        cur.execute(
+            """
+            INSERT OR IGNORE INTO event_store(pubkey, event_data, metadata, event_type, event_id, created_at)
+            VALUES(?, ?, ?, ?, ?, ?)
+            """,
+            (
+                pubkey,
+                json.dumps(data, sort_keys=True),
+                json.dumps(metadata, sort_keys=True),
+                event_type,
+                event_id,
+                int(time_now_ms or 0),
+            )
+        )
+    except Exception:
+        pass
+
+
 def project(db, envelope, time_now_ms):
     """
-    Projects decrypted but unrecognized event types to unknown_events table.
+    Persist decrypted but unrecognized events to SQL unknown_events.
     """
-    # Initialize state if needed
-    if 'state' not in db:
-        db['state'] = {}
-    
-    if 'unknown_events' not in db['state']:
-        state = db['state']
-        state['unknown_events'] = []
-        db['state'] = state
-    
-    # Add to unknown events table
+    # Build entry
+    import json as _json
     unknown_entry = {
         'data': envelope.get('data'),
         'metadata': envelope.get('metadata', {}),
         'timestamp': envelope.get('metadata', {}).get('receivedAt', time_now_ms)
     }
-    
-    # Get state, modify it, and reassign to trigger persistence
-    state = db['state']
-    state['unknown_events'].append(unknown_entry)
-    db['state'] = state  # Trigger persistence!
-    
-    # Store in eventStore
-    if 'eventStore' not in db:
-        db['eventStore'] = []
-    
-    # Get eventStore, modify, and reassign
-    event_store = db['eventStore']
-    event_store.append(envelope)  # Store full envelope
-    db['eventStore'] = event_store
-    
+
+    # Persist to SQL if available
+    try:
+        if hasattr(db, 'conn'):
+            cur = db.conn.cursor()
+            cur.execute(
+                "INSERT INTO unknown_events(data, metadata, timestamp) VALUES(?, ?, ?)",
+                (_json.dumps(unknown_entry['data']), _json.dumps(unknown_entry['metadata']), int(unknown_entry['timestamp'] or 0))
+            )
+            # Append to SQL event_store (protocol-owned)
+            _append_event(db, envelope, time_now_ms)
+            db.conn.commit()
+    except Exception:
+        pass
+
     return db
+    # Append to SQL event_store (protocol-owned)
+    try:
+        from .._event_store import append as _append_event
+        _append_event(db, envelope, time_now_ms)
+    except Exception:
+        pass

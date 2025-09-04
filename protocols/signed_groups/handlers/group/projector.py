@@ -1,121 +1,74 @@
 def project(db, envelope, time_now_ms):
     """
-    Project group events into state
+    Project group events to SQL (dict-state deprecated).
+    Performs minimal validation via SQL when available.
     """
-    if 'state' not in db:
-        db['state'] = {}
-    
-    if 'groups' not in db['state']:
-        db['state']['groups'] = []
-    
     data = envelope.get('data', {})
-    
     if data.get('type') != 'group':
         return db
-    
+
     group_id = data.get('id')
     name = data.get('name')
     created_by = data.get('user_id')
     signature = data.get('signature')
-    
     if not all([group_id, name, created_by, signature]):
         return db
-    
-    # Check if group already exists
-    for existing in db['state']['groups']:
-        if existing.get('id') == group_id:
-            return db
-    
-    # Check if creator is a valid user and get their pubkey
-    users = db['state'].get('users', [])
-    creator_user = None
-    for user in users:
-        if user.get('id') == created_by:
-            creator_user = user
-            break
-    
-    if not creator_user:
-        # Store event in eventStore even when blocked
-        if 'eventStore' not in db:
-            db['eventStore'] = []
-        db['eventStore'].append(envelope)
-        
-        # Block this group using indexed structure
-        blocked_by_id = db['state'].get('blocked_by_id', {})
-        if created_by not in blocked_by_id:
-            blocked_by_id[created_by] = []
-        blocked_by_id[created_by].append({
-            'event_id': group_id,
-            'reason': f"Creator user {created_by} not found"
-        })
-        db['state']['blocked_by_id'] = blocked_by_id
-        
+
+    # Append to SQL event_store (protocol-owned)
+    try:
+        from .._event_store import append as _append_event
+        _append_event(db, envelope, time_now_ms)
+    except Exception:
+        pass
+
+    # Validate creator via SQL only
+    try:
+        cur = db.conn.cursor()
+        u = cur.execute("SELECT 1 FROM users WHERE id = ? LIMIT 1", (created_by,)).fetchone()
+        # Dummy signature check: ensure signer matches claimed user
+        if signature.startswith("dummy_sig_signed_by_"):
+            signer_id = signature.replace("dummy_sig_signed_by_", "")
+            if signer_id != created_by:
+                u = None
+    except Exception:
+        u = None
+    if not u:
         return db
-    
-    # Verify signature matches the creator's pubkey
-    # In dummy mode, we check if signature indicates it was signed by the creator
-    if signature.startswith("dummy_sig_signed_by_"):
-        # Extract who signed it from the dummy signature
-        signer_id = signature.replace("dummy_sig_signed_by_", "")
-        if signer_id != created_by:
-            # Store event in eventStore even when blocked
-            if 'eventStore' not in db:
-                db['eventStore'] = []
-            db['eventStore'].append(envelope)
-            
-            # Block this group due to signature mismatch
-            blocked_by_id = db['state'].get('blocked_by_id', {})
-            if 'signature_mismatch' not in blocked_by_id:
-                blocked_by_id['signature_mismatch'] = []
-            blocked_by_id['signature_mismatch'].append({
-                'event_id': group_id,
-                'reason': f"Signature does not match claimed user {created_by}"
-            })
-            db['state']['blocked_by_id'] = blocked_by_id
-            
-            return db
-    
-    # Add group
-    group_data = {
-        'id': group_id,
-        'name': name,
-        'created_by': created_by
-    }
-    
-    state = db['state']
-    state['groups'].append(group_data)
-    # Sort groups by ID for deterministic ordering
-    state['groups'].sort(key=lambda g: g['id'])
-    
-    # Track the first group in the network
-    if 'first_group_id' not in state:
-        state['first_group_id'] = group_id
-    
-    db['state'] = state
-    
-    if 'eventStore' not in db:
-        db['eventStore'] = []
-    
-    event_store = db['eventStore']
-    event_store.append(envelope)
-    db['eventStore'] = event_store
-    
-    # Try to unblock any events waiting on this group
-    unblock(db, group_id)
-    
+
+    # Persist to SQL
+    try:
+        if hasattr(db, 'conn'):
+            cur = db.conn.cursor()
+            cur.execute(
+                """
+                INSERT OR IGNORE INTO groups(id, name, created_by, created_at_ms)
+                VALUES(?, ?, ?, ?)
+                """,
+                (group_id, name, created_by, int(time_now_ms or 0))
+            )
+            db.conn.commit()
+    except Exception:
+        pass
+
+    # Attempt to enqueue rechecks (no-op without blocked index)
+    try:
+        unblock(db, group_id)
+    except Exception:
+        pass
+
     return db
 
 def unblock(db, event_id):
     """
-    Mark events that were waiting for this event as ready to unblock
+    Enqueue recheck markers for events blocked on this dependency (SQLite table).
     """
-    state = db.get('state', {})
-    blocked_by_id = state.get('blocked_by_id', {})
-    ready_to_unblock = state.get('ready_to_unblock', {})
-    
-    # Find all events blocked by this event_id
-    if event_id in blocked_by_id:
-        for blocked_event in blocked_by_id[event_id]:
-            ready_to_unblock[blocked_event['event_id']] = True
-    
-    db['state']['ready_to_unblock'] = ready_to_unblock
+    cursor = getattr(db, 'conn', None).cursor() if hasattr(db, 'conn') else None
+    if cursor is not None:
+        try:
+            cursor.execute(
+                "INSERT OR IGNORE INTO recheck_queue(event_id, reason_type, available_at_ms) VALUES(?, ?, ?)",
+                (event_id, None, 0)
+            )
+            db.conn.commit()
+        except Exception:
+            pass

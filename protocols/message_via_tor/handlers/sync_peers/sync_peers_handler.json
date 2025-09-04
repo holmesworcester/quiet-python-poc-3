@@ -7,44 +7,16 @@
       {
         "given": {
           "db": {
-            "state": {
+            "tables": {
               "peers": [
-                {
-                  "pubkey": "peer1",
-                  "name": "Alice",
-                  "received_by": "identity1"
-                },
-                {
-                  "pubkey": "peer2",
-                  "name": "Bob",
-                  "received_by": "identity1"
-                }
+                {"pubkey": "peer1", "name": "Alice", "received_by": "identity1"},
+                {"pubkey": "peer2", "name": "Bob", "received_by": "identity1"}
+              ],
+              "event_store": [
+                {"event_type": "peer", "event_id": "e1", "metadata": {"selfGenerated": true, "received_by": "identity1"}, "event_data": {"type": "peer", "pubkey": "peer1", "name": "Alice"}, "pubkey": "identity1", "created_at": 0},
+                {"event_type": "peer", "event_id": "e2", "metadata": {"selfGenerated": true, "received_by": "identity1"}, "event_data": {"type": "peer", "pubkey": "peer2", "name": "Bob"}, "pubkey": "identity1", "created_at": 0}
               ]
-            },
-            "eventStore": [
-              {
-                "data": {
-                  "type": "peer",
-                  "pubkey": "peer1",
-                  "name": "Alice"
-                },
-                "metadata": {
-                  "selfGenerated": true,
-                  "received_by": "identity1"
-                }
-              },
-              {
-                "data": {
-                  "type": "peer",
-                  "pubkey": "peer2",
-                  "name": "Bob"
-                },
-                "metadata": {
-                  "selfGenerated": true,
-                  "received_by": "identity1"
-                }
-              }
-            ]
+            }
           },
           "envelope": {
             "recipient": "identity1",
@@ -58,39 +30,15 @@
           }
         },
         "then": {
-          "db": {
-            "state": {
-              "peers": [
-                {
-                  "pubkey": "peer1",
-                  "name": "Alice",
-                  "received_by": "identity1"
-                },
-                {
-                  "pubkey": "peer2",
-                  "name": "Bob",
-                  "received_by": "identity1"
-                }
-              ],
-              "outgoing": [
-                {
-                  "recipient": "peer3",
-                  "data": {
-                    "type": "peer",
-                    "pubkey": "peer1",
-                    "name": "Alice"
-                  }
-                },
-                {
-                  "recipient": "peer3",
-                  "data": {
-                    "type": "peer",
-                    "pubkey": "peer2",
-                    "name": "Bob"
-                  }
-                }
-              ]
-            }
+          "tables": { 
+            "peers": [
+              {"pubkey": "peer1", "name": "Alice", "received_by": "identity1"},
+              {"pubkey": "peer2", "name": "Bob", "received_by": "identity1"}
+            ],
+            "outgoing": [
+              {"recipient": "peer3", "data": {"type": "peer", "pubkey": "peer1", "name": "Alice"}},
+              {"recipient": "peer3", "data": {"type": "peer", "pubkey": "peer2", "name": "Bob"}}
+            ]
           }
         }
       }
@@ -129,7 +77,7 @@
         {
           "given": {
             "db": {
-              "state": {}
+              "tables": {}
             },
             "params": {
               "recipient": "peer2"
@@ -139,19 +87,7 @@
             "return": {
               "return": "Sync request sent to peer2"
             },
-            "db": {
-              "state": {
-                "outgoing": [
-                  {
-                    "recipient": "peer2",
-                    "data": {
-                      "type": "sync_peers",
-                      "sender": "*"
-                    }
-                  }
-                ]
-              }
-            }
+            "tables": { "outgoing": [ { "recipient": "peer2", "data": { "type": "sync_peers" } } ] }
           }
         }
       ]
@@ -163,40 +99,16 @@
         {
           "given": {
             "db": {
-              "state": {
+              "tables": {
                 "identities": [
-                  {
-                    "pubkey": "id1",
-                    "privkey": "id1_priv",
-                    "name": "Identity1"
-                  },
-                  {
-                    "pubkey": "id2",
-                    "privkey": "id2_priv",
-                    "name": "Identity2"
-                  }
+                  {"pubkey": "id1", "privkey": "id1_priv", "name": "Identity1"},
+                  {"pubkey": "id2", "privkey": "id2_priv", "name": "Identity2"}
                 ],
                 "peers": [
-                  {
-                    "pubkey": "peer1",
-                    "name": "Peer1",
-                    "received_by": "id1"
-                  },
-                  {
-                    "pubkey": "peer2",
-                    "name": "Peer2",
-                    "received_by": "id1"
-                  },
-                  {
-                    "pubkey": "peer1",
-                    "name": "Peer1",
-                    "received_by": "id2"
-                  },
-                  {
-                    "pubkey": "peer2",
-                    "name": "Peer2",
-                    "received_by": "id2"
-                  }
+                  {"pubkey": "peer1", "name": "Peer1", "received_by": "id1"},
+                  {"pubkey": "peer2", "name": "Peer2", "received_by": "id1"},
+                  {"pubkey": "peer1", "name": "Peer1", "received_by": "id2"},
+                  {"pubkey": "peer2", "name": "Peer2", "received_by": "id2"}
                 ]
               }
             },
@@ -206,73 +118,13 @@
             "return": {
               "return": "Sent sync requests from 2 identities to 2 peers"
             },
-            "db": {
-              "state": {
-                "identities": [
-                  {
-                    "pubkey": "id1",
-                    "privkey": "id1_priv",
-                    "name": "Identity1"
-                  },
-                  {
-                    "pubkey": "id2",
-                    "privkey": "id2_priv",
-                    "name": "Identity2"
-                  }
-                ],
-                "peers": [
-                  {
-                    "pubkey": "peer1",
-                    "name": "Peer1",
-                    "received_by": "id1"
-                  },
-                  {
-                    "pubkey": "peer2",
-                    "name": "Peer2",
-                    "received_by": "id1"
-                  },
-                  {
-                    "pubkey": "peer1",
-                    "name": "Peer1",
-                    "received_by": "id2"
-                  },
-                  {
-                    "pubkey": "peer2",
-                    "name": "Peer2",
-                    "received_by": "id2"
-                  }
-                ],
-                "outgoing": [
-                  {
-                    "recipient": "peer1",
-                    "data": {
-                      "type": "sync_peers",
-                      "sender": "id1"
-                    }
-                  },
-                  {
-                    "recipient": "peer2",
-                    "data": {
-                      "type": "sync_peers",
-                      "sender": "id1"
-                    }
-                  },
-                  {
-                    "recipient": "peer1",
-                    "data": {
-                      "type": "sync_peers",
-                      "sender": "id2"
-                    }
-                  },
-                  {
-                    "recipient": "peer2",
-                    "data": {
-                      "type": "sync_peers",
-                      "sender": "id2"
-                    }
-                  }
-                ]
-              }
+            "tables": { 
+              "outgoing": [
+                {"recipient": "peer1", "data": {"type": "sync_peers", "sender": "id1"}},
+                {"recipient": "peer2", "data": {"type": "sync_peers", "sender": "id1"}},
+                {"recipient": "peer1", "data": {"type": "sync_peers", "sender": "id2"}},
+                {"recipient": "peer2", "data": {"type": "sync_peers", "sender": "id2"}}
+              ] 
             }
           }
         }

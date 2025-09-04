@@ -6,7 +6,7 @@
     "tests": [
       {
         "given": {
-          "db": {"state": {}},
+          "db": {"tables": {}},
           "envelope": {
             "data": null,
             "metadata": {
@@ -19,32 +19,20 @@
           }
         },
         "then": {
-          "db": {
-            "state": {
-              "pending_missing_key": [
-                {
-                  "envelope": {
-                    "data": null,
-                    "metadata": {
-                      "error": "Missing outer key: abc123",
-                      "inNetwork": false,
-                      "missingHash": "abc123",
-                      "origin": "peer1",
-                      "receivedAt": 1000
-                    }
-                  },
-                  "missingHash": "abc123",
-                  "inNetwork": false,
-                  "timestamp": 1000
-                }
-              ]
-            }
+          "tables": {
+            "pending_missing_key": [
+              {
+                "missingHash": "abc123",
+                "inNetwork": false,
+                "timestamp": 1000
+              }
+            ]
           }
         }
       },
       {
         "given": {
-          "db": {"state": {"pending_missing_key": []}},
+          "db": {"tables": {"pending_missing_key": []}},
           "envelope": {
             "data": {"data": "encrypted_data"},
             "metadata": {
@@ -58,27 +46,14 @@
           }
         },
         "then": {
-          "db": {
-            "state": {
-              "pending_missing_key": [
-                {
-                  "envelope": {
-                    "data": {"data": "encrypted_data"},
-                    "metadata": {
-                      "error": "Missing inner key: def456",
-                      "inNetwork": true,
-                      "missingHash": "def456",
-                      "outerKeyHash": "abc123",
-                      "origin": "peer2",
-                      "receivedAt": 2000
-                    }
-                  },
-                  "missingHash": "def456",
-                  "inNetwork": true,
-                  "timestamp": 2000
-                }
-              ]
-            }
+          "tables": {
+            "pending_missing_key": [
+              {
+                "missingHash": "def456",
+                "inNetwork": true,
+                "timestamp": 2000
+              }
+            ]
           }
         }
       }
@@ -92,16 +67,11 @@
         {
           "given": {
             "db": {
-              "state": {
+              "tables": {
                 "pending_missing_key": [
-                  {
-                    "envelope": {"data": null, "metadata": {"error": "Missing key"}},
-                    "missingHash": "key123",
-                    "inNetwork": false,
-                    "timestamp": 1000
-                  }
+                  {"missingHash": "key123", "inNetwork": false, "timestamp": 1000}
                 ],
-                "key_map": {"key123": "found_key"}
+                "key_map": [ {"key_hash": "key123", "key_value": "found_key"} ]
               }
             },
             "params": {}
@@ -117,16 +87,10 @@
         {
           "given": {
             "db": {
-              "state": {
+              "tables": {
                 "pending_missing_key": [
-                  {
-                    "envelope": {"data": null, "metadata": {"error": "Missing key"}},
-                    "missingHash": "key456",
-                    "inNetwork": false,
-                    "timestamp": 1000
-                  }
-                ],
-                "key_map": {}
+                  {"missingHash": "key456", "inNetwork": false, "timestamp": 1000}
+                ]
               }
             },
             "params": {}

@@ -1,44 +1,37 @@
 def execute(input_data, db):
     """
     Purge old unknown events to prevent unbounded growth.
-    Removes events older than the specified cutoff time.
+    SQL-first against 'unknown_events' with dict fallback.
     """
-    # Get cutoff time from input or default to 24 hours
     cutoff_hours = input_data.get('cutoff_hours', 24)
     current_time = input_data.get('current_time_ms')
-    
-    # Check if we have any unknown events
-    unknown_events = db.get('state', {}).get('unknown_events', [])
-    if not unknown_events:
-        return {
-            "return": "No unknown events",
-            "purged": 0
-        }
-    
+
     if current_time is None:
         return {
             "return": "No current time provided",
             "purged": 0
         }
-    
-    # Calculate cutoff time in milliseconds
-    cutoff_time = current_time - (cutoff_hours * 60 * 60 * 1000)
-    
-    # Count events before purging
-    before_count = len(unknown_events)
-    
-    # Filter out old events
-    db['state']['unknown_events'] = [
-        event for event in unknown_events
-        if event.get('timestamp', 0) > cutoff_time
-    ]
-    
-    # Count purged events
-    after_count = len(db['state']['unknown_events'])
-    purged_count = before_count - after_count
-    
+
+    cutoff_time = int(current_time - (cutoff_hours * 60 * 60 * 1000))
+
+    # SQL-only path
+    cur = db.conn.cursor()
+    before = cur.execute("SELECT COUNT(1) FROM unknown_events").fetchone()[0]
+    if before == 0:
+        return {"return": "No unknown events", "purged": 0}
+    # Purge and count remaining
+    purged = cur.execute(
+        "DELETE FROM unknown_events WHERE timestamp <= ?",
+        (cutoff_time,),
+    )
+    try:
+        purged_count = purged.rowcount if purged and purged.rowcount is not None else 0
+    except Exception:
+        purged_count = 0
+    remaining = cur.execute("SELECT COUNT(1) FROM unknown_events").fetchone()[0]
+
     return {
         "return": f"Purged {purged_count} events",
         "purged": purged_count,
-        "remaining": after_count
+        "remaining": remaining
     }

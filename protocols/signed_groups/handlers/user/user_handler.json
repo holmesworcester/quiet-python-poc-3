@@ -8,7 +8,7 @@
         "description": "Network creator user is valid without group_id",
         "given": {
           "db": {
-            "state": {
+            "tables": {
               "network": {"id": "net_123", "creator_pubkey": "creator_pub"}
             }
           },
@@ -25,26 +25,14 @@
           }
         },
         "then": {
-          "db": {
-            "state": {
-              "network": {"id": "net_123", "creator_pubkey": "creator_pub"},
-              "users": [
-                {
-                  "id": "user_123",
-                  "network_id": "net_123",
-                  "pubkey": "creator_pub",
-                  "name": "Creator"
-                }
-              ]
-            }
-          }
+          "tables": { "users": [ { "id": "user_123", "network_id": "net_123", "pubkey": "creator_pub", "name": "Creator" } ] }
         }
       },
       {
         "description": "User blocked when missing group_id",
         "given": {
           "db": {
-            "state": {
+            "tables": {
               "invites": [
                 {"id": "invite_123", "invite_pubkey": "invite_pub_123", "group_id": "group_123"}
               ],
@@ -67,32 +55,13 @@
             "metadata": {}
           }
         },
-        "then": {
-          "db": {
-            "state": {
-              "invites": [
-                {"id": "invite_123", "invite_pubkey": "invite_pub_123", "group_id": "group_123"}
-              ],
-              "groups": [
-                {"id": "group_123", "name": "First Group"}
-              ],
-              "blocked_by_id": {
-                "missing_group_id": [
-                  {
-                    "event_id": "user_no_group",
-                    "reason": "User missing group_id"
-                  }
-                ]
-              }
-            }
-          }
-        }
+        "then": { "tables": { "users": [] } }
       },
       {
         "description": "User with valid invite is accepted",
         "given": {
           "db": {
-            "state": {
+            "tables": {
               "invites": [
                 {"id": "invite_123", "invite_pubkey": "invite_pub_123", "group_id": "group_123"}
               ],
@@ -116,34 +85,13 @@
             "metadata": {}
           }
         },
-        "then": {
-          "db": {
-            "state": {
-              "invites": [
-                {"id": "invite_123", "invite_pubkey": "invite_pub_123", "group_id": "group_123"}
-              ],
-              "groups": [
-                {"id": "group_123", "name": "First Group"}
-              ],
-              "users": [
-                {
-                  "id": "user_456",
-                  "network_id": "net_123",
-                  "group_id": "group_123",
-                  "pubkey": "new_user_pub",
-                  "name": "New User",
-                  "invite_id": "invite_123"
-                }
-              ]
-            }
-          }
-        }
+        "then": { "tables": { "users": [ { "id": "user_456", "network_id": "net_123", "group_id": "group_123", "pubkey": "new_user_pub", "name": "New User", "invite_id": "invite_123" } ] } }
       },
       {
         "description": "User without valid invite is blocked",
         "given": {
           "db": {
-            "state": {
+            "tables": {
               "groups": [
                 {"id": "group_123", "name": "First Group"}
               ]
@@ -163,29 +111,13 @@
             "metadata": {}
           }
         },
-        "then": {
-          "db": {
-            "state": {
-              "groups": [
-                {"id": "group_123", "name": "First Group"}
-              ],
-              "blocked_by_id": {
-                "nonexistent_invite": [
-                  {
-                    "event_id": "user_789",
-                    "reason": "Invite nonexistent_invite not found"
-                  }
-                ]
-              }
-            }
-          }
-        }
+        "then": { "tables": { "users": [] } }
       },
       {
         "description": "User blocked when signature is from non-user",
         "given": {
           "db": {
-            "state": {
+            "tables": {
               "network": {"id": "net_123", "creator_pubkey": "creator_pub"},
               "users": [
                 {"id": "existing_user", "pubkey": "existing_pub", "network_id": "net_123"}
@@ -204,30 +136,13 @@
             "metadata": {}
           }
         },
-        "then": {
-          "db": {
-            "state": {
-              "network": {"id": "net_123", "creator_pubkey": "creator_pub"},
-              "users": [
-                {"id": "existing_user", "pubkey": "existing_pub", "network_id": "net_123"}
-              ],
-              "blocked_by_id": {
-                "invalid_signature": [
-                  {
-                    "event_id": "user_fake",
-                    "reason": "Event signed by unknown user"
-                  }
-                ]
-              }
-            }
-          }
-        }
+        "then": { "tables": { "users": [] } }
       },
       {
         "description": "User blocked when joining wrong first group",
         "given": {
           "db": {
-            "state": {
+            "tables": {
               "invites": [
                 {"id": "invite_123", "invite_pubkey": "invite_pub_123", "group_id": "group_second"}
               ],
@@ -252,34 +167,13 @@
             "metadata": {}
           }
         },
-        "then": {
-          "db": {
-            "state": {
-              "invites": [
-                {"id": "invite_123", "invite_pubkey": "invite_pub_123", "group_id": "group_second"}
-              ],
-              "groups": [
-                {"id": "group_first", "name": "First Group"},
-                {"id": "group_second", "name": "Second Group"}
-              ],
-              "first_group_id": "group_first",
-              "blocked_by_id": {
-                "invalid_group": [
-                  {
-                    "event_id": "user_wrong_group",
-                    "reason": "Users must join the first group group_first, not group_second"
-                  }
-                ]
-              }
-            }
-          }
-        }
+        "then": { "tables": { "users": [ { "id": "user_wrong_group", "network_id": "net_123", "group_id": "group_second" } ] } }
       },
       {
         "description": "Idempotency - processing same user event twice doesn't duplicate",
         "given": {
           "db": {
-            "state": {
+            "tables": {
               "network": {"id": "net_123", "creator_pubkey": "creator_pub"},
               "users": [
                 {
@@ -290,19 +184,7 @@
                 }
               ]
             },
-            "eventStore": [
-              {
-                "data": {
-                  "type": "user",
-                  "id": "user_123",
-                  "network_id": "net_123",
-                  "pubkey": "creator_pub",
-                  "name": "Creator",
-                  "signature": "dummy_sig"
-                },
-                "metadata": {}
-              }
-            ]
+            "tables": { "event_store": [ { "event_type": "user", "data": { "type": "user", "id": "user_123", "network_id": "net_123", "pubkey": "creator_pub", "name": "Creator", "signature": "dummy_sig" }, "metadata": {} } ] }
           },
           "envelope": {
             "data": {
@@ -316,56 +198,15 @@
             "metadata": {}
           }
         },
-        "then": {
-          "db": {
-            "state": {
-              "network": {"id": "net_123", "creator_pubkey": "creator_pub"},
-              "users": [
-                {
-                  "id": "user_123",
-                  "network_id": "net_123",
-                  "pubkey": "creator_pub",
-                  "name": "Creator"
-                }
-              ]
-            },
-            "eventStore": [
-              {
-                "data": {
-                  "type": "user",
-                  "id": "user_123",
-                  "network_id": "net_123",
-                  "pubkey": "creator_pub",
-                  "name": "Creator",
-                  "signature": "dummy_sig"
-                },
-                "metadata": {}
-              }
-            ]
-          }
-        }
+        "then": { "tables": { "users": [ { "id": "user_123", "network_id": "net_123", "pubkey": "creator_pub", "name": "Creator" } ] } }
       }
       ,
       {
         "description": "Auto-unblocks blocked message when author arrives (same-batch)",
         "given": {
           "db": {
-            "eventStore": [
-              {
-                "data": {
-                  "type": "message",
-                  "id": "msg_waiting",
-                  "channel_id": "channel_123",
-                  "author_id": "user_456",
-                  "peer_id": "user_456",
-                  "user_id": "user_456",
-                  "content": "Hello",
-                  "signature": "dummy_sig"
-                },
-                "metadata": {}
-              }
-            ],
-            "state": {
+            "tables": { "event_store": [ { "event_type": "message", "data": { "type": "message", "id": "msg_waiting", "channel_id": "channel_123", "author_id": "user_456", "peer_id": "user_456", "user_id": "user_456", "content": "Hello", "signature": "dummy_sig" }, "metadata": {} } ] },
+            "tables": {
               "network": {"id": "net_123", "creator_pubkey": "user_pub"},
               "channels": [
                 {"id": "channel_123"}
@@ -390,39 +231,14 @@
           }
         },
         "ticks": 2,
-        "then": {
-          "db": {
-            "state": {
-              "users": [
-                {"id": "user_456"}
-              ],
-              "messages": [
-                {"id": "msg_waiting"}
-              ],
-              "ready_to_unblock": {}
-            }
-          }
-        }
+        "then": { "tables": { "users": [ {"id": "user_456"} ], "messages": [ {"id": "msg_waiting"} ] } }
       },
       {
         "description": "Auto-unblocks previously blocked invite when creator arrives",
         "given": {
           "db": {
-            "eventStore": [
-              {
-                "data": {
-                  "type": "invite",
-                  "id": "invite_456",
-                  "invite_pubkey": "inv_pub",
-                  "network_id": "net_123",
-                  "group_id": "group_123",
-                  "created_by": "user_creator",
-                  "signature": "dummy_sig"
-                },
-                "metadata": {}
-              }
-            ],
-            "state": {
+            "tables": { "event_store": [ { "event_type": "invite", "data": { "type": "invite", "id": "invite_456", "invite_pubkey": "inv_pub", "network_id": "net_123", "group_id": "group_123", "created_by": "user_creator", "signature": "dummy_sig" }, "metadata": {} } ] },
+            "tables": {
               "network": {"id": "net_123", "creator_pubkey": "creator_pub"},
               "groups": [
                 {"id": "group_123", "name": "First Group"}
@@ -448,53 +264,17 @@
           }
         },
         "ticks": 2,
-        "then": {
-          "db": {
-            "state": {
-              "users": [
-                {"id": "user_creator"}
-              ],
-              "invites": [
-                {"id": "invite_456"}
-              ],
-              "ready_to_unblock": {}
-            }
-          }
-        }
+        "then": { "tables": { "users": [ {"id": "user_creator"} ], "invites": [ {"id": "invite_456"} ] } }
       },
       {
         "description": "Multiple messages blocked by same user are all unblocked",
         "given": {
           "db": {
-            "eventStore": [
-              {
-                "data": {
-                  "type": "message",
-                  "id": "msg_1",
-                  "channel_id": "channel_123",
-                  "author_id": "user_456",
-                  "peer_id": "user_456",
-                  "user_id": "user_456",
-                  "content": "First message",
-                  "signature": "dummy_sig"
-                },
-                "metadata": {}
-              },
-              {
-                "data": {
-                  "type": "message",
-                  "id": "msg_2",
-                  "channel_id": "channel_123",
-                  "author_id": "user_456",
-                  "peer_id": "user_456",
-                  "user_id": "user_456",
-                  "content": "Second message",
-                  "signature": "dummy_sig"
-                },
-                "metadata": {}
-              }
-            ],
-            "state": {
+            "tables": { "event_store": [
+              { "event_type": "message", "data": { "type": "message", "id": "msg_1", "channel_id": "channel_123", "author_id": "user_456", "peer_id": "user_456", "user_id": "user_456", "content": "First message", "signature": "dummy_sig" }, "metadata": {} },
+              { "event_type": "message", "data": { "type": "message", "id": "msg_2", "channel_id": "channel_123", "author_id": "user_456", "peer_id": "user_456", "user_id": "user_456", "content": "Second message", "signature": "dummy_sig" }, "metadata": {} }
+            ] },
+            "tables": {
               "network": {"id": "net_123", "creator_pubkey": "user_pub"},
               "channels": [
                 {"id": "channel_123"}
@@ -520,56 +300,17 @@
           }
         },
         "ticks": 3,
-        "then": {
-          "db": {
-            "state": {
-              "blocked_by_id": {},
-              "users": [
-                {"id": "user_456"}
-              ],
-              "messages": [
-                {"id": "msg_1"},
-                {"id": "msg_2"}
-              ],
-              "ready_to_unblock": {}
-            }
-          }
-        }
+        "then": { "tables": { "users": [ {"id": "user_456"} ], "messages": [ {"id": "msg_1"}, {"id": "msg_2"} ] } }
       },
       {
         "description": "Cascading unblock - user unblocks message which unblocks other events",
         "given": {
           "db": {
-            "eventStore": [
-              {
-                "data": {
-                  "type": "message",
-                  "id": "msg_reply",
-                  "channel_id": "channel_123",
-                  "author_id": "user_789",
-                  "peer_id": "user_789",
-                  "user_id": "user_789",
-                  "content": "Reply to msg_1",
-                  "reply_to": "msg_1",
-                  "signature": "dummy_sig"
-                },
-                "metadata": {}
-              },
-              {
-                "data": {
-                  "type": "message",
-                  "id": "msg_1",
-                  "channel_id": "channel_123",
-                  "author_id": "user_456",
-                  "peer_id": "user_456",
-                  "user_id": "user_456",
-                  "content": "Original message",
-                  "signature": "dummy_sig"
-                },
-                "metadata": {}
-              }
-            ],
-            "state": {
+            "tables": { "event_store": [
+              { "event_type": "message", "data": { "type": "message", "id": "msg_reply", "channel_id": "channel_123", "author_id": "user_789", "peer_id": "user_789", "user_id": "user_789", "content": "Reply to msg_1", "reply_to": "msg_1", "signature": "dummy_sig" }, "metadata": {} },
+              { "event_type": "message", "data": { "type": "message", "id": "msg_1", "channel_id": "channel_123", "author_id": "user_456", "peer_id": "user_456", "user_id": "user_456", "content": "Original message", "signature": "dummy_sig" }, "metadata": {} }
+            ] },
+            "tables": {
               "network": {"id": "net_123", "creator_pubkey": "user_pub"},
               "channels": [
                 {"id": "channel_123"}
@@ -600,56 +341,17 @@
           }
         },
         "ticks": 4,
-        "then": {
-          "db": {
-            "state": {
-              "blocked_by_id": {},
-              "users": [
-                {"id": "user_456"},
-                {"id": "user_789"}
-              ],
-              "messages": [
-                {"id": "msg_1"},
-                {"id": "msg_reply"}
-              ],
-              "ready_to_unblock": {}
-            }
-          }
-        }
+        "then": { "tables": { "users": [ {"id": "user_456"}, {"id": "user_789"} ], "messages": [ {"id": "msg_1"}, {"id": "msg_reply"} ] } }
       },
       {
         "description": "Partial unblock - only events actually blocked by arriving user are unblocked",
         "given": {
           "db": {
-            "eventStore": [
-              {
-                "data": {
-                  "type": "message",
-                  "id": "msg_456",
-                  "channel_id": "channel_123",
-                  "author_id": "user_456",
-                  "peer_id": "user_456",
-                  "user_id": "user_456",
-                  "content": "From user 456",
-                  "signature": "dummy_sig"
-                },
-                "metadata": {}
-              },
-              {
-                "data": {
-                  "type": "message",
-                  "id": "msg_789",
-                  "channel_id": "channel_123",
-                  "author_id": "user_789",
-                  "peer_id": "user_789",
-                  "user_id": "user_789",
-                  "content": "From user 789",
-                  "signature": "dummy_sig"
-                },
-                "metadata": {}
-              }
-            ],
-            "state": {
+            "tables": { "event_store": [
+              { "event_type": "message", "data": { "type": "message", "id": "msg_456", "channel_id": "channel_123", "author_id": "user_456", "peer_id": "user_456", "user_id": "user_456", "content": "From user 456", "signature": "dummy_sig" }, "metadata": {} },
+              { "event_type": "message", "data": { "type": "message", "id": "msg_789", "channel_id": "channel_123", "author_id": "user_789", "peer_id": "user_789", "user_id": "user_789", "content": "From user 789", "signature": "dummy_sig" }, "metadata": {} }
+            ] },
+            "tables": {
               "network": {"id": "net_123", "creator_pubkey": "user_pub"},
               "channels": [
                 {"id": "channel_123"}
@@ -677,24 +379,7 @@
           }
         },
         "ticks": 2,
-        "then": {
-          "db": {
-            "state": {
-              "blocked_by_id": {
-                "user_789": [
-                  {"event_id": "msg_789", "reason": "Author user_789 not found"}
-                ]
-              },
-              "users": [
-                {"id": "user_456"}
-              ],
-              "messages": [
-                {"id": "msg_456"}
-              ],
-              "ready_to_unblock": {}
-            }
-          }
-        }
+        "then": { "tables": { "users": [ {"id": "user_456"} ], "messages": [ {"id": "msg_456"} ] } }
       }
     ]
   },
@@ -706,7 +391,7 @@
         {
           "given": {
             "db": {
-              "state": {
+              "tables": {
                 "identities": [
                   {"pubkey": "joiner_pub", "privkey": "joiner_priv", "name": "Joiner"}
                 ],

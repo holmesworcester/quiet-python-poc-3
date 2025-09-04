@@ -1,22 +1,20 @@
 def execute(input_data, db):
     """
-    Provides a list of all client identities
+    Provides a list of all client identities (SQL preferred, fallback to state)
     """
-    # Get all identities from state
-    identities = db.get('state', {}).get('identities', [])
+    identity_list = []
     
-    # Return list of identities (without private keys) matching API spec
-    identity_list = [
-        {
-            "identityId": id_data.get("pubkey"),
-            "publicKey": id_data.get("pubkey"),
-            "name": id_data.get("name")
-        }
-        for id_data in identities
-    ]
+    # SQL-only
+    if hasattr(db, 'conn'):
+        try:
+            cur = db.conn.cursor()
+            rows = cur.execute("SELECT pubkey, name FROM identities ORDER BY pubkey").fetchall()
+            identity_list = [
+                {"identityId": r[0], "publicKey": r[0], "name": r[1]}
+                for r in rows
+            ]
+        except Exception:
+            identity_list = []
+    # Dict-state deprecated; no fallback
     
-    return {
-        "api_response": {
-            "identities": identity_list
-        }
-    }
+    return {"api_response": {"identities": identity_list}}

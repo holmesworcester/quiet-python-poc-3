@@ -47,14 +47,14 @@ CREATE TABLE IF NOT EXISTS event_store (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     pubkey VARCHAR(64) NOT NULL,
     event_data TEXT NOT NULL,
+    metadata TEXT NOT NULL,
     event_type VARCHAR(50) NOT NULL,
     event_id VARCHAR(64) UNIQUE NOT NULL,
     created_at BIGINT NOT NULL,
     INDEX idx_event_store_pubkey (pubkey),
     INDEX idx_event_store_type (event_type),
     INDEX idx_event_store_created (created_at),
-    INDEX idx_event_store_pubkey_created (pubkey, created_at),
-    FOREIGN KEY (pubkey) REFERENCES identities(pubkey) ON DELETE CASCADE
+    INDEX idx_event_store_pubkey_created (pubkey, created_at)
 );
 
 -- Peer relationships (per identity - tracks which identity knows which peers)
@@ -78,4 +78,15 @@ CREATE TABLE IF NOT EXISTS unknown_events (
     metadata TEXT NOT NULL,
     timestamp BIGINT NOT NULL,
     INDEX idx_unknown_timestamp (timestamp)
+);
+
+-- Incoming queue for network-delivered envelopes
+CREATE TABLE IF NOT EXISTS incoming (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    recipient VARCHAR(64) NOT NULL,
+    data TEXT NOT NULL,
+    metadata TEXT NOT NULL,
+    received_at BIGINT NOT NULL,
+    INDEX idx_incoming_recipient (recipient),
+    INDEX idx_incoming_received_at (received_at)
 );

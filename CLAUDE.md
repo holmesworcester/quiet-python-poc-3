@@ -18,6 +18,10 @@ pip install pyyaml textual rich pynacl
 python core/test_runner.py protocols/message_via_tor
 python core/test_runner.py protocols/framework_tests
 
+# Prefer snapshot assertions (for SQL-native protocols)
+# When set, command tests require `then.snapshot` blocks instead of `then.db`.
+SNAPSHOT_ONLY=1 python core/test_runner.py protocols/message_via_tor
+
 # Run API server
 python core/api.py protocols/message_via_tor
 
@@ -62,6 +66,7 @@ Each handler directory contains:
 - Run specific tests with: `python core/test_runner.py <protocol_path> --test <test_name>`
 - All protocol-specific tests should be as JSON
 - Real crypto tests should generate actual encrypted values and put these in tests (dummy crypto is an option too when not testing crypto)
+- For SQL-native protocols, prefer asserting `then.snapshot` (not `then.db`) to decouple from dict-state and allow pure-SQL projectors/reads.
 
 ## Development Guidelines
 

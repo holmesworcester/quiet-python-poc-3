@@ -6,7 +6,7 @@
     "tests": [
       {
         "given": {
-          "db": {"state": {}},
+          "db": {"tables": {}},
           "envelope": {
             "data": {"type": "unrecognized_type", "data": "some data"},
             "metadata": {
@@ -19,28 +19,26 @@
           }
         },
         "then": {
-          "db": {
-            "state": {
-              "unknown_events": [
-                {
-                  "data": {"type": "unrecognized_type", "data": "some data"},
-                  "metadata": {
-                    "eventId": "event123",
-                    "outerKeyHash": "key1",
-                    "innerKeyHash": "key2",
-                    "origin": "peer1",
-                    "receivedAt": 1000
-                  },
-                  "timestamp": 1000
-                }
-              ]
-            }
+          "tables": {
+            "unknown_events": [
+              {
+                "data": {"type": "unrecognized_type", "data": "some data"},
+                "metadata": {
+                  "eventId": "event123",
+                  "outerKeyHash": "key1",
+                  "innerKeyHash": "key2",
+                  "origin": "peer1",
+                  "receivedAt": 1000
+                },
+                "timestamp": 1000
+              }
+            ]
           }
         }
       },
       {
         "given": {
-          "db": {"state": {"unknown_events": [{"data": {"type": "old_type"}, "timestamp": 500}]}},
+          "db": {"tables": {"unknown_events": [{"data": {"type": "old_type"}, "metadata": {}, "timestamp": 500}]}},
           "envelope": {
             "data": {"type": "another_unknown", "value": 42},
             "metadata": {
@@ -50,20 +48,18 @@
           }
         },
         "then": {
-          "db": {
-            "state": {
-              "unknown_events": [
-                {"data": {"type": "old_type"}, "timestamp": 500},
-                {
-                  "data": {"type": "another_unknown", "value": 42},
-                  "metadata": {
-                    "eventId": "event456",
-                    "receivedAt": 2000
-                  },
-                  "timestamp": 2000
-                }
-              ]
-            }
+          "tables": {
+            "unknown_events": [
+              {"data": {"type": "old_type"}, "timestamp": 500},
+              {
+                "data": {"type": "another_unknown", "value": 42},
+                "metadata": {
+                  "eventId": "event456",
+                  "receivedAt": 2000
+                },
+                "timestamp": 2000
+              }
+            ]
           }
         }
       }
@@ -77,10 +73,10 @@
         {
           "given": {
             "db": {
-              "state": {
+              "tables": {
                 "unknown_events": [
-                  {"data": {"type": "old_event"}, "timestamp": 1000},
-                  {"data": {"type": "recent_event"}, "timestamp": 90000000}
+                  {"data": {"type": "old_event"}, "metadata": {}, "timestamp": 1000},
+                  {"data": {"type": "recent_event"}, "metadata": {}, "timestamp": 90000000}
                 ]
               }
             },
@@ -100,7 +96,7 @@
         {
           "given": {
             "db": {
-              "state": {}
+              "tables": {}
             },
             "params": {
               "current_time_ms": 100000000

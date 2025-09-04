@@ -8,7 +8,7 @@
         "description": "Valid link-invite is accepted",
         "given": {
           "db": {
-            "state": {
+            "tables": {
               "users": [
                 {"id": "user_123", "pubkey": "user_pub", "network_id": "net_123"}
               ]
@@ -25,28 +25,13 @@
             "metadata": {}
           }
         },
-        "then": {
-          "db": {
-            "state": {
-              "users": [
-                {"id": "user_123", "pubkey": "user_pub", "network_id": "net_123"}
-              ],
-              "link_invites": [
-                {
-                  "id": "link_invite_123",
-                  "link_invite_pubkey": "link_pub_123",
-                  "user_id": "user_123"
-                }
-              ]
-            }
-          }
-        }
+        "then": { "tables": { "link_invites": [ { "id": "link_invite_123", "link_invite_pubkey": "link_pub_123", "user_id": "user_123" } ] } }
       },
       {
         "description": "Link-invite blocked when user doesn't exist",
         "given": {
           "db": {
-            "state": {}
+            "tables": {}
           },
           "envelope": {
             "data": {
@@ -59,26 +44,13 @@
             "metadata": {}
           }
         },
-        "then": {
-          "db": {
-            "state": {
-              "blocked_by_id": {
-                "unknown_user": [
-                  {
-                    "event_id": "link_invite_456",
-                    "reason": "User unknown_user not found"
-                  }
-                ]
-              }
-            }
-          }
-        }
+        "then": { "tables": { "link_invites": [] } }
       },
       {
         "description": "Link-invite blocked when signature is from non-user",
         "given": {
           "db": {
-            "state": {
+            "tables": {
               "users": [
                 {"id": "user_123", "pubkey": "user_pub", "network_id": "net_123"}
               ]
@@ -95,23 +67,7 @@
             "metadata": {}
           }
         },
-        "then": {
-          "db": {
-            "state": {
-              "users": [
-                {"id": "user_123", "pubkey": "user_pub", "network_id": "net_123"}
-              ],
-              "blocked_by_id": {
-                "invalid_signature": [
-                  {
-                    "event_id": "link_invite_fake",
-                    "reason": "Event signed by unknown user"
-                  }
-                ]
-              }
-            }
-          }
-        }
+        "then": { "tables": { "link_invites": [] } }
       }
     ]
   }

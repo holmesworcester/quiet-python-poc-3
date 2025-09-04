@@ -67,8 +67,10 @@ def _run_command_with_tx(handler_name, command_name, input_data, db, time_now_ms
     command_module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(command_module)
     
+    # Allow commands to manage their own transactions when needed
+    manage_tx = bool(getattr(command_module, 'MANAGE_TRANSACTIONS', False))
     has_transactions = hasattr(db, 'begin_transaction')
-    if has_transactions:
+    if has_transactions and not manage_tx:
         db.begin_transaction()
     
     try:
@@ -83,10 +85,10 @@ def _run_command_with_tx(handler_name, command_name, input_data, db, time_now_ms
                 print(f"[command] Traceback: {traceback.format_exc()}")
             raise Exception(error_msg) from e
         
-        # Apply safe direct updates
-        if isinstance(result, dict) and 'db' in result:
+        # Apply safe direct updates (only when framework manages the transaction)
+        if not manage_tx and isinstance(result, dict) and 'db' in result:
             for key, value in result['db'].items():
-                # TODO: this is a crude way to prevent domain state changes outside events; find a more principled way in the future.
+                # Prevent domain state changes outside events
                 if has_transactions and not is_infrastructure_update(key, value, db):
                     raise ValueError(
                         f"Command '{command_name}' attempted to modify domain state '{key}'. "
@@ -95,7 +97,7 @@ def _run_command_with_tx(handler_name, command_name, input_data, db, time_now_ms
                 db[key] = value
         
         # Project any new events/envelopes returned by the command
-        if isinstance(result, dict) and ('newEnvelopes' in result or 'newEvents' in result):
+        if not manage_tx and isinstance(result, dict) and ('newEnvelopes' in result or 'newEvents' in result):
             items = result.get('newEnvelopes') or result.get('newEvents') or []
             for item in items:
                 # Accept either full envelopes ({data, metadata}) or raw event dicts
@@ -107,11 +109,11 @@ def _run_command_with_tx(handler_name, command_name, input_data, db, time_now_ms
                 db = handle(db, envelope, time_now_ms, auto_transaction=False)
         
         # Commit when successful
-        if has_transactions:
+        if has_transactions and not manage_tx:
             db.commit()
             
     except Exception as e:
-        if has_transactions:
+        if has_transactions and not manage_tx:
             db.rollback()
         raise
     

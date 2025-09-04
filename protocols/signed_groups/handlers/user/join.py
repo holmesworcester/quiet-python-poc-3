@@ -30,32 +30,27 @@ def execute(params, db):
     if not invite_secret or not network_id or not group_id:
         raise ValueError("Invalid invite data - missing required fields")
     
-    state = db.get('state', {})
-    
-    # Find identity
-    identities = state.get('identities', [])
-    identity = None
-    for i in identities:
-        if i['pubkey'] == identity_id:
-            identity = i
-            break
-    
-    if not identity:
+    # Find identity via SQL
+    if not hasattr(db, 'conn'):
+        raise ValueError("Persistent DB required")
+    cur = db.conn.cursor()
+    row = cur.execute("SELECT name FROM identities WHERE pubkey = ?", (identity_id,)).fetchone()
+    if not row:
         raise ValueError(f"Identity {identity_id} not found")
+    identity_name = row[0] if not isinstance(row, dict) else row.get('name')
     
     # Derive invite pubkey from secret
     invite_pubkey = "invite_pub_" + hashlib.sha256(invite_secret.encode()).hexdigest()[:16]
     
-    # Find matching invite
-    invites = state.get('invites', [])
-    invite = None
-    for inv in invites:
-        if inv.get('invite_pubkey') == invite_pubkey:
-            invite = inv
-            break
-    
-    if not invite:
+    # Find matching invite via SQL
+    inv_row = cur.execute("SELECT id, network_id, group_id FROM invites WHERE invite_pubkey = ?", (invite_pubkey,)).fetchone()
+    if not inv_row:
         raise ValueError("Invite not found or invalid")
+    invite = {
+        'id': inv_row[0] if not isinstance(inv_row, dict) else inv_row.get('id'),
+        'network_id': inv_row[1] if not isinstance(inv_row, dict) else inv_row.get('network_id'),
+        'group_id': inv_row[2] if not isinstance(inv_row, dict) else inv_row.get('group_id')
+    }
     
     # Generate user ID
     user_id = hashlib.sha256(f"{network_id}:{identity_id}:{invite['id']}".encode()).hexdigest()[:16]
@@ -73,7 +68,7 @@ def execute(params, db):
         'network_id': network_id,
         'group_id': group_id,  # From invite
         'pubkey': identity_id,
-        'name': identity['name'],
+        'name': identity_name,
         'invite_id': invite['id'],
         'invite_signature': invite_signature,
         'signature': signature

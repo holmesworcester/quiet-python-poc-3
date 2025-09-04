@@ -1,53 +1,85 @@
+import json
+import uuid
+
+
+def _ensure_event_id(metadata):
+    if not isinstance(metadata, dict):
+        return str(uuid.uuid4())
+    eid = metadata.get('eventId')
+    if not eid:
+        eid = str(uuid.uuid4())
+        metadata['eventId'] = eid
+    return eid
+
+
+def _append_event(db, envelope, time_now_ms):
+    if not hasattr(db, 'conn') or db.conn is None:
+        return
+    data = envelope.get('data') or {}
+    metadata = envelope.get('metadata') or {}
+    event_type = data.get('type') or 'unknown'
+    event_id = _ensure_event_id(metadata)
+    pubkey = metadata.get('received_by') or data.get('sender') or data.get('pubkey') or 'unknown'
+    try:
+        cur = db.conn.cursor()
+        cur.execute(
+            """
+            INSERT OR IGNORE INTO event_store(pubkey, event_data, metadata, event_type, event_id, created_at)
+            VALUES(?, ?, ?, ?, ?, ?)
+            """,
+            (
+                pubkey,
+                json.dumps(data, sort_keys=True),
+                json.dumps(metadata, sort_keys=True),
+                event_type,
+                event_id,
+                int(time_now_ms or 0),
+            )
+        )
+    except Exception:
+        pass
+
+
 def project(db, envelope, time_now_ms):
     """
-    Project identity events into state
+    Project identity events into SQL-owned tables (no dict-state).
     """
-    # Initialize state if needed
-    if 'state' not in db:
-        db['state'] = {}
-    
-    if 'identities' not in db['state']:
-        db['state']['identities'] = []
-    
     # Get data from envelope
     data = envelope.get('data', {})
-    
-    # Validate identity event
     if data.get('type') != 'identity':
         return db
-    
+
     pubkey = data.get('pubkey')
     privkey = data.get('privkey')
-    name = data.get('name')
-    
+    name = data.get('name') or (pubkey[:8] if pubkey else None)
     if not pubkey or not privkey:
         return db
-    
-    # Check if identity already exists
-    for existing in db['state']['identities']:
-        if existing.get('pubkey') == pubkey:
-            # Already exists, skip
-            return db
-    
-    # Add to identities
-    identity_data = {
-        'pubkey': pubkey,
-        'privkey': privkey,
-        'name': name or pubkey[:8]
-    }
-    
-    # Get the state, modify it, and reassign to trigger persistence
-    state = db['state']
-    state['identities'].append(identity_data)
-    db['state'] = state  # This triggers persistence!
-    
-    # Store in eventStore
-    if 'eventStore' not in db:
-        db['eventStore'] = []
-    
-    # Get eventStore, modify it, and reassign to trigger persistence
-    event_store = db['eventStore']
-    event_store.append(envelope)  # Store full envelope, not just data
-    db['eventStore'] = event_store  # This triggers persistence!
-    
+
+    # Persist to SQL (protocol-owned table)
+    try:
+        if hasattr(db, 'conn'):
+            cur = db.conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO identities(pubkey, privkey, name, created_at, updated_at)
+                VALUES(?, ?, ?, ?, ?)
+                ON CONFLICT(pubkey) DO UPDATE SET
+                    name=excluded.name,
+                    updated_at=excluded.updated_at
+                """,
+                (pubkey, privkey, name, int(time_now_ms or 0), int(time_now_ms or 0))
+            )
+            # Append to SQL event_store (protocol-owned)
+            _append_event(db, envelope, time_now_ms)
+            db.conn.commit()
+    except Exception as e:
+        try:
+            import os
+            if os.environ.get('TEST_MODE'):
+                print(f"[identity.projector] SQL error: {e}")
+        except Exception:
+            pass
+        # Keep projection resilient if SQL not available or schema mismatch
+        pass
+
     return db

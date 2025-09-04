@@ -1,29 +1,65 @@
 from core.handle import handle
 import uuid
 import time
+import json
 
 
 def execute(input_data, db):
     """
-    Process incoming message queue for message_via_tor protocol.
-    This protocol doesn't use message layer encryption, so we just
-    pass through the messages as envelopes.
+    Process incoming message queue (SQL-backed).
     """
-    # Get incoming blobs
-    incoming_blobs = db.get('incoming', [])[:]
-    db['incoming'] = []
-    
     current_time = input_data.get("time_now_ms", int(time.time() * 1000))
-    
+
+    # Read from SQL incoming table
+    rows = []
+    if hasattr(db, 'conn'):
+        try:
+            cur = db.conn.cursor()
+            rs = cur.execute("SELECT id, recipient, data, metadata FROM incoming ORDER BY id").fetchall()
+            for r in rs:
+                rid = r[0]
+                recipient = r[1]
+                data = r[2]
+                metadata = r[3]
+                try:
+                    data = json.loads(data) if isinstance(data, str) else data
+                except Exception:
+                    pass
+                try:
+                    metadata = json.loads(metadata) if isinstance(metadata, str) else (metadata or {})
+                except Exception:
+                    metadata = {}
+                rows.append({"id": rid, "recipient": recipient, "data": data, "metadata": metadata})
+        except Exception:
+            rows = []
+
     # Process each envelope
-    for envelope in incoming_blobs:
-        # tor_simulator always provides proper envelopes
-        # Add event ID if not present (for incoming network events)
-        if 'metadata' in envelope and 'eventId' not in envelope.get('metadata', {}):
+    for row in rows:
+        envelope = {
+            "envelope": True,
+            "recipient": row["recipient"],
+            "data": row["data"],
+            "metadata": row["metadata"] or {}
+        }
+        if 'eventId' not in envelope['metadata']:
             envelope['metadata']['eventId'] = str(uuid.uuid4())
-            envelope['metadata']['timestamp'] = envelope['metadata'].get('timestamp', current_time)
-        
-        # Handle the envelope (auto_transaction=False since we're already in a command transaction)
+        if 'timestamp' not in envelope['metadata']:
+            envelope['metadata']['timestamp'] = current_time
+        # Ensure received_by present
+        if 'received_by' not in envelope['metadata']:
+            envelope['metadata']['received_by'] = row["recipient"]
+
         db = handle(db, envelope, input_data.get("time_now_ms"), auto_transaction=False)
-    
+
+    # Delete processed rows
+    if hasattr(db, 'conn') and rows:
+        try:
+            cur = db.conn.cursor()
+            ids = [r['id'] for r in rows]
+            q_marks = ','.join(['?'] * len(ids))
+            cur.execute(f"DELETE FROM incoming WHERE id IN ({q_marks})", ids)
+            db.conn.commit()
+        except Exception:
+            pass
+
     return {"db": db}

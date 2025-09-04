@@ -1,17 +1,10 @@
 def execute(input_data, db):
     """
-    Sends sync requests from all identities to all their known peers
+    Sends sync requests from all identities to all their known peers (SQL-only).
     """
-    # Initialize state if needed
-    if 'state' not in db:
-        db['state'] = {}
-    
-    if 'outgoing' not in db['state']:
-        db['state']['outgoing'] = []
-    
-    # Get all identities and peers
-    identities = db['state'].get('identities', [])
-    peers = db['state'].get('peers', [])
+    cur = db.conn.cursor()
+    identities = [dict(r) for r in cur.execute("SELECT pubkey FROM identities").fetchall()]
+    peers = [dict(r) for r in cur.execute("SELECT pubkey, received_by FROM peers").fetchall()]
     
     sent_count = 0
     
@@ -45,13 +38,24 @@ def execute(input_data, db):
                 "data": sync_event
             }
             
-            db['state']['outgoing'].append(outgoing)
+            # Persist to SQL outgoing if available
+            try:
+                if hasattr(db, 'conn'):
+                    import json
+                    cur = db.conn.cursor()
+                    cur.execute(
+                        "INSERT INTO outgoing(recipient, data, created_at, sent) VALUES(?, ?, ?, 0)",
+                        (peer_pubkey, json.dumps(sync_event), int(input_data.get('time_now_ms') or 0))
+                    )
+                    db.conn.commit()
+            except Exception:
+                pass
             sent_count += 1
     
     # Count unique recipients
-    unique_recipients = len(set(o['recipient'] for o in db['state']['outgoing'] if o['data'].get('type') == 'sync_peers'))
+    rows = cur.execute("SELECT DISTINCT recipient FROM outgoing WHERE sent = 0").fetchall()
+    unique_recipients = len(rows)
     
     return {
-        "return": f"Sent sync requests from {len(identities)} identities to {unique_recipients} peers",
-        "db": db
+        "return": f"Sent sync requests from {len(identities)} identities to {unique_recipients} peers"
     }

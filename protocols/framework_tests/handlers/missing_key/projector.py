@@ -1,30 +1,37 @@
 def project(db, envelope, time_now_ms):
     """
-    Project missing key events into pending_missing_key state.
+    Project missing key events. SQL-first: writes to 'pending_missing_key' table
+    with dict fallback for legacy state tests.
     """
-    # Initialize state if needed
-    if 'state' not in db:
-        db['state'] = {}
-    
-    if 'pending_missing_key' not in db['state']:
-        state = db['state']
-        state['pending_missing_key'] = []
-        db['state'] = state
-    
-    # Extract metadata
     metadata = envelope.get('metadata', {})
-    
-    # Add to pending table
-    pending_entry = {
-        'envelope': envelope,
-        'missingHash': metadata.get('missingHash'),
-        'inNetwork': metadata.get('inNetwork', False),
-        'timestamp': metadata.get('receivedAt', time_now_ms)
-    }
-    
-    # Get state, modify it, and reassign to trigger persistence
-    state = db['state']
-    state['pending_missing_key'].append(pending_entry)
-    db['state'] = state  # Trigger persistence!
-    
+    missing_hash = metadata.get('missingHash')
+    in_network = bool(metadata.get('inNetwork', False))
+    ts = metadata.get('receivedAt', time_now_ms)
+    origin = metadata.get('origin')
+
+    # Prefer SQL table when available
+    try:
+        if hasattr(db, 'conn') and db.conn is not None:
+            cur = db.conn.cursor()
+            # Ensure table exists (schema provides it during protocol init)
+            cur.execute(
+                """
+                INSERT INTO pending_missing_key (envelope, missingHash, inNetwork, timestamp, origin)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (__json_dump(envelope), missing_hash, 1 if in_network else 0, int(ts or 0), origin),
+            )
+            # Let outer transaction commit
+    except Exception:
+        # Fall through to dict state
+        pass
+
     return db
+
+
+def __json_dump(obj):
+    try:
+        import json
+        return json.dumps(obj)
+    except Exception:
+        return None
